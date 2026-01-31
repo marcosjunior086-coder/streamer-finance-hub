@@ -8,7 +8,7 @@ import { Streamer, StreamerFormData } from '@/types/streamer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { UserPlus, Search, Users } from 'lucide-react';
+import { UserPlus, Search, Users, Trash2 } from 'lucide-react';
 
 export default function Streamers() {
   const {
@@ -22,13 +22,15 @@ export default function Streamers() {
     handleSort,
     addStreamer,
     updateStreamer,
-    deleteStreamer
+    deleteStreamer,
+    clearMonthlyData
   } = useStreamers();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingStreamer, setEditingStreamer] = useState<Streamer | null>(null);
   const [deletingStreamer, setDeletingStreamer] = useState<Streamer | null>(null);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
+  const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false);
 
   const handleAdd = () => {
     setEditingStreamer(null);
@@ -52,6 +54,10 @@ export default function Streamers() {
     }
   };
 
+  const confirmClearMonthlyData = async () => {
+    await clearMonthlyData();
+  };
+
   const handleFormSubmit = async (data: StreamerFormData): Promise<boolean> => {
     if (editingStreamer) {
       return updateStreamer(editingStreamer.id, data);
@@ -70,10 +76,20 @@ export default function Streamers() {
               Gerencie os streamers da agência
             </p>
           </div>
-          <Button onClick={handleAdd} className="gradient-primary">
-            <UserPlus className="h-5 w-5 mr-2" />
-            Adicionar Streamer
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => setIsClearDataDialogOpen(true)} 
+              variant="outline"
+              className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <Trash2 className="h-5 w-5 mr-2" />
+              Limpar dados do mês
+            </Button>
+            <Button onClick={handleAdd} className="gradient-primary">
+              <UserPlus className="h-5 w-5 mr-2" />
+              Adicionar Streamer
+            </Button>
+          </div>
         </div>
 
         {/* Stats Card */}
@@ -130,6 +146,15 @@ export default function Streamers() {
           onConfirm={confirmDelete}
           title="Excluir Streamer"
           description={`Tem certeza que deseja excluir "${deletingStreamer?.name}"? Esta ação não pode ser desfeita.`}
+        />
+
+        {/* Password Dialog for Clear Monthly Data */}
+        <PasswordDialog
+          open={isClearDataDialogOpen}
+          onOpenChange={setIsClearDataDialogOpen}
+          onConfirm={confirmClearMonthlyData}
+          title="Limpar Dados do Mês"
+          description="Isso irá zerar Sorte, Exclusivos, Cristais, Horas e Dias de TODOS os streamers. Nome e ID serão mantidos. Esta ação não pode ser desfeita."
         />
       </div>
     </MainLayout>
