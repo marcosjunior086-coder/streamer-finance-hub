@@ -124,6 +124,31 @@ export function useStreamers() {
     }
   };
 
+  const clearMonthlyData = async (): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from('streamers')
+        .update({
+          luck_gifts: 0,
+          exclusive_gifts: 0,
+          host_crystals: 0,
+          minutes: 0,
+          effective_days: 0
+        })
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Update all rows
+
+      if (error) throw error;
+
+      toast.success('Dados do mês limpos com sucesso!');
+      await fetchStreamers();
+      return true;
+    } catch (error) {
+      console.error('Error clearing monthly data:', error);
+      toast.error('Erro ao limpar dados do mês');
+      return false;
+    }
+  };
+
   const filteredStreamers = streamers.filter(streamer => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
@@ -154,6 +179,7 @@ export function useStreamers() {
     addStreamer,
     updateStreamer,
     deleteStreamer,
+    clearMonthlyData,
     refetch: fetchStreamers
   };
 }

@@ -54,7 +54,7 @@ export function StreamersTable({
     const agencyUsd = calculateAgencyUsd(streamer.host_crystals);
     const hours = formatMinutesToHours(streamer.minutes);
     
-    const text = `🏆 ${index + 1} ${streamer.name} ${streamer.streamer_id} ${formatNumber(streamer.luck_gifts)} ${formatNumber(streamer.exclusive_gifts)} ${formatNumber(streamer.host_crystals)} ${formatCurrency(hostUsd)} ${formatCurrency(agencyUsd)} ${formatNumber(streamer.luck_gifts + streamer.exclusive_gifts)} ${hours} ${streamer.effective_days}`;
+    const text = `🏆 ${index + 1} ${streamer.name} ${streamer.streamer_id} ${formatNumber(streamer.luck_gifts)} ${formatNumber(streamer.exclusive_gifts)} ${formatNumber(streamer.host_crystals)} ${formatCurrency(hostUsd)} ${formatCurrency(agencyUsd)} ${hours} ${streamer.effective_days}`;
     
     navigator.clipboard.writeText(text);
     toast.success('Dados copiados!');
@@ -112,7 +112,6 @@ export function StreamersTable({
               <SortableHeader field="host_crystals" className="text-right">Cristais</SortableHeader>
               <SortableHeader field="host_usd" className="text-right">Host $</SortableHeader>
               <SortableHeader field="agency_usd" className="text-right">Agência $</SortableHeader>
-              <TableHead className="text-right">Total Cristais</TableHead>
               <SortableHeader field="minutes" className="text-right">Horas</SortableHeader>
               <SortableHeader field="effective_days" className="text-right">Dias</SortableHeader>
               <TableHead className="w-32">Ações</TableHead>
@@ -123,7 +122,6 @@ export function StreamersTable({
               const globalIndex = startIndex + index;
               const hostUsd = calculateHostUsd(streamer.host_crystals);
               const agencyUsd = calculateAgencyUsd(streamer.host_crystals);
-              const totalCrystals = streamer.luck_gifts + streamer.exclusive_gifts;
               const hours = formatMinutesToHours(streamer.minutes);
 
               return (
@@ -138,7 +136,6 @@ export function StreamersTable({
                   <TableCell className="text-right font-medium text-secondary">{formatNumber(streamer.host_crystals)}</TableCell>
                   <TableCell className="text-right text-success">{formatCurrency(hostUsd)}</TableCell>
                   <TableCell className="text-right text-primary">{formatCurrency(agencyUsd)}</TableCell>
-                  <TableCell className="text-right">{formatNumber(totalCrystals)}</TableCell>
                   <TableCell className="text-right">{hours}</TableCell>
                   <TableCell className="text-right">{streamer.effective_days}</TableCell>
                   <TableCell>

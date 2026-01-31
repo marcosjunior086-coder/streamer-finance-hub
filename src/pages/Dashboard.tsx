@@ -3,6 +3,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useStreamers } from '@/hooks/useStreamers';
 import { useSnapshots } from '@/hooks/useSnapshots';
 import { 
@@ -12,12 +13,8 @@ import {
   calculateAgencyUsd 
 } from '@/types/streamer';
 import {
-  LineChart,
-  Line,
   BarChart,
   Bar,
-  AreaChart,
-  Area,
   PieChart,
   Pie,
   Cell,
@@ -35,32 +32,60 @@ import {
   Users, 
   Crown,
   Percent,
-  Calendar,
   Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const COLORS = ['hsl(330, 100%, 59%)', 'hsl(262, 76%, 57%)', 'hsl(142, 76%, 36%)', 'hsl(38, 92%, 50%)', 'hsl(200, 80%, 50%)'];
 
+type RankingType = 'luck_gifts' | 'exclusive_gifts' | 'host_crystals';
+type CrystalsType = 'luck_gifts' | 'exclusive_gifts' | 'host_crystals';
+
 export default function Dashboard() {
   const { allStreamers, isLoading: streamersLoading } = useStreamers();
   const { snapshots, createSnapshot, isLoading: snapshotsLoading } = useSnapshots();
   const [activeTab, setActiveTab] = useState<'weekly' | 'monthly' | 'yearly'>('weekly');
   const [isSaving, setIsSaving] = useState(false);
+  const [rankingType, setRankingType] = useState<RankingType>('host_crystals');
+  const [crystalsType, setCrystalsType] = useState<CrystalsType>('host_crystals');
 
-  // Calculate current stats
-  const totalCrystals = allStreamers.reduce((sum, s) => sum + s.host_crystals, 0);
+  // Calculate current stats based on crystals type selector
+  const getCrystalsTotal = () => {
+    switch (crystalsType) {
+      case 'luck_gifts':
+        return allStreamers.reduce((sum, s) => sum + s.luck_gifts, 0);
+      case 'exclusive_gifts':
+        return allStreamers.reduce((sum, s) => sum + s.exclusive_gifts, 0);
+      case 'host_crystals':
+      default:
+        return allStreamers.reduce((sum, s) => sum + s.host_crystals, 0);
+    }
+  };
+
+  const getCrystalsLabel = () => {
+    switch (crystalsType) {
+      case 'luck_gifts':
+        return 'Presente da Sorte';
+      case 'exclusive_gifts':
+        return 'Exclusivos';
+      case 'host_crystals':
+      default:
+        return 'Cristais Host';
+    }
+  };
+
+  const totalCrystals = getCrystalsTotal();
   const totalHostUsd = allStreamers.reduce((sum, s) => sum + calculateHostUsd(s.host_crystals), 0);
   const totalAgencyUsd = allStreamers.reduce((sum, s) => sum + calculateAgencyUsd(s.host_crystals), 0);
   const marginPercent = totalHostUsd > 0 ? (totalAgencyUsd / totalHostUsd) * 100 : 0;
 
-  // Top streamer
+  // Top streamer by revenue (USD) - fixed logic
   const topStreamer = allStreamers.length > 0 
-    ? allStreamers.reduce((max, s) => s.host_crystals > max.host_crystals ? s : max, allStreamers[0])
+    ? allStreamers.reduce((max, s) => calculateHostUsd(s.host_crystals) > calculateHostUsd(max.host_crystals) ? s : max, allStreamers[0])
     : null;
 
-  // Highest cost (most crystals = most cost to pay)
-  const highestCost = topStreamer ? calculateHostUsd(topStreamer.host_crystals) : 0;
+  // Highest revenue streamer (same as top streamer in this context)
+  const highestRevenue = topStreamer ? calculateHostUsd(topStreamer.host_crystals) : 0;
 
   // Calculate growth from previous period
   const previousSnapshot = snapshots.find(s => s.period_type === activeTab);
@@ -68,13 +93,25 @@ export default function Dashboard() {
     ? ((totalAgencyUsd - previousSnapshot.total_agency_usd) / previousSnapshot.total_agency_usd) * 100 
     : 0;
 
-  // Prepare chart data - top 10 streamers
+  // Prepare chart data - top 10 streamers based on selected ranking type
+  const getRankingLabel = () => {
+    switch (rankingType) {
+      case 'luck_gifts':
+        return 'Presente da Sorte';
+      case 'exclusive_gifts':
+        return 'Exclusivo';
+      case 'host_crystals':
+      default:
+        return 'Cristais';
+    }
+  };
+
   const top10Streamers = [...allStreamers]
-    .sort((a, b) => b.host_crystals - a.host_crystals)
+    .sort((a, b) => b[rankingType] - a[rankingType])
     .slice(0, 10)
     .map(s => ({
       name: s.name.substring(0, 15),
-      crystals: s.host_crystals,
+      value: s[rankingType],
       hostUsd: calculateHostUsd(s.host_crystals),
       agencyUsd: calculateAgencyUsd(s.host_crystals)
     }));
@@ -155,13 +192,26 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className="glass card-hover">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Cristais Totais
-                  </CardTitle>
+                  <div className="flex flex-col gap-1">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Cristais Totais
+                    </CardTitle>
+                    <Select value={crystalsType} onValueChange={(v) => setCrystalsType(v as CrystalsType)}>
+                      <SelectTrigger className="h-7 w-[140px] text-xs">
+                        <SelectValue placeholder="Tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="luck_gifts">Presente da Sorte</SelectItem>
+                        <SelectItem value="exclusive_gifts">Exclusivos</SelectItem>
+                        <SelectItem value="host_crystals">Cristais Host</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Gem className="h-5 w-5 text-secondary" />
                 </CardHeader>
                 <CardContent>
                   <p className="text-2xl font-bold">{formatNumber(totalCrystals)}</p>
+                  <p className="text-xs text-muted-foreground">{getCrystalsLabel()}</p>
                 </CardContent>
               </Card>
 
@@ -180,7 +230,7 @@ export default function Dashboard() {
               <Card className="glass card-hover">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Lucro Agência
+                    Receita Agência
                   </CardTitle>
                   <TrendingUp className="h-5 w-5 text-primary" />
                 </CardHeader>
@@ -214,7 +264,7 @@ export default function Dashboard() {
                 <CardContent>
                   <p className="text-xl font-bold truncate">{topStreamer?.name || '-'}</p>
                   <p className="text-sm text-muted-foreground">
-                    {topStreamer ? formatNumber(topStreamer.host_crystals) + ' cristais' : ''}
+                    {topStreamer ? formatCurrency(calculateHostUsd(topStreamer.host_crystals)) + ' USD' : ''}
                   </p>
                 </CardContent>
               </Card>
@@ -222,12 +272,12 @@ export default function Dashboard() {
               <Card className="glass card-hover">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Maior Custo
+                    Maior Receita
                   </CardTitle>
-                  <DollarSign className="h-5 w-5 text-destructive" />
+                  <DollarSign className="h-5 w-5 text-success" />
                 </CardHeader>
                 <CardContent>
-                  <p className="text-xl font-bold text-destructive">{formatCurrency(highestCost)}</p>
+                  <p className="text-xl font-bold text-success">{formatCurrency(highestRevenue)}</p>
                   <p className="text-sm text-muted-foreground">{topStreamer?.name || '-'}</p>
                 </CardContent>
               </Card>
@@ -253,10 +303,22 @@ export default function Dashboard() {
               {/* Top Streamers Bar Chart */}
               <Card className="glass">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5 text-primary" />
-                    Ranking de Streamers
-                  </CardTitle>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-primary" />
+                      Ranking de Streamers
+                    </CardTitle>
+                    <Select value={rankingType} onValueChange={(v) => setRankingType(v as RankingType)}>
+                      <SelectTrigger className="w-[160px]">
+                        <SelectValue placeholder="Ranking por" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="luck_gifts">Presente da Sorte</SelectItem>
+                        <SelectItem value="exclusive_gifts">Exclusivo</SelectItem>
+                        <SelectItem value="host_crystals">Cristais</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="h-80">
@@ -271,9 +333,9 @@ export default function Dashboard() {
                             border: '1px solid hsl(var(--border))',
                             borderRadius: '8px'
                           }}
-                          formatter={(value: number) => formatNumber(value)}
+                          formatter={(value: number) => [formatNumber(value), getRankingLabel()]}
                         />
-                        <Bar dataKey="crystals" fill="hsl(330, 100%, 59%)" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="value" fill="hsl(330, 100%, 59%)" radius={[0, 4, 4, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
