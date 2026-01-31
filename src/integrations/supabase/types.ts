@@ -121,19 +121,28 @@ export type Database = {
           created_at: string
           expires_at: string
           id: string
+          ip_address: string | null
+          last_validated_at: string | null
           session_token: string
+          user_agent: string | null
         }
         Insert: {
           created_at?: string
           expires_at?: string
           id?: string
+          ip_address?: string | null
+          last_validated_at?: string | null
           session_token: string
+          user_agent?: string | null
         }
         Update: {
           created_at?: string
           expires_at?: string
           id?: string
+          ip_address?: string | null
+          last_validated_at?: string | null
           session_token?: string
+          user_agent?: string | null
         }
         Relationships: []
       }
