@@ -1,24 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { Snapshot, Streamer, StreamerSnapshotData, calculateHostUsd, calculateAgencyUsd } from '@/types/streamer';
 import { toast } from 'sonner';
 import type { Json } from '@/integrations/supabase/types';
 
 export function useSnapshots() {
+  const { sessionToken } = useAuth();
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchSnapshots = useCallback(async () => {
+    if (!sessionToken) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const { data, error } = await supabase
-        .from('snapshots')
-        .select('*')
-        .order('snapshot_date', { ascending: false });
+      const { data, error } = await supabase.functions.invoke('api', {
+        body: { resource: 'snapshots', action: 'list' },
+        headers: { 'x-session-token': sessionToken }
+      });
 
       if (error) throw error;
 
       // Transform the data to match our Snapshot interface
-      const transformedData: Snapshot[] = (data || []).map(item => ({
+      const transformedData: Snapshot[] = (data?.data || []).map((item: any) => ({
         ...item,
         period_type: item.period_type as 'weekly' | 'monthly' | 'yearly',
         data: item.data as unknown as StreamerSnapshotData[]
@@ -31,7 +38,7 @@ export function useSnapshots() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [sessionToken]);
 
   useEffect(() => {
     fetchSnapshots();
@@ -42,16 +49,18 @@ export function useSnapshots() {
     periodLabel: string,
     streamers: Streamer[]
   ): Promise<boolean> => {
-    try {
-      // Check for existing snapshot with same period
-      const { data: existing } = await supabase
-        .from('snapshots')
-        .select('id')
-        .eq('period_type', periodType)
-        .eq('period_label', periodLabel)
-        .limit(1);
+    if (!sessionToken) {
+      toast.error('Sessão inválida');
+      return false;
+    }
 
-      if (existing && existing.length > 0) {
+    try {
+      // Check for existing snapshot with same period in local data
+      const existing = snapshots.find(
+        s => s.period_type === periodType && s.period_label === periodLabel
+      );
+
+      if (existing) {
         toast.error(`Já existe um snapshot para ${periodLabel}`);
         return false;
       }
@@ -83,7 +92,10 @@ export function useSnapshots() {
         streamer_count: streamers.length
       };
 
-      const { error } = await supabase.from('snapshots').insert(insertData);
+      const { data, error } = await supabase.functions.invoke('api', {
+        body: { resource: 'snapshots', action: 'create', data: insertData },
+        headers: { 'x-session-token': sessionToken }
+      });
 
       if (error) throw error;
 
@@ -98,8 +110,16 @@ export function useSnapshots() {
   };
 
   const deleteSnapshot = async (id: string): Promise<boolean> => {
+    if (!sessionToken) {
+      toast.error('Sessão inválida');
+      return false;
+    }
+
     try {
-      const { error } = await supabase.from('snapshots').delete().eq('id', id);
+      const { data, error } = await supabase.functions.invoke('api', {
+        body: { resource: 'snapshots', action: 'delete', id },
+        headers: { 'x-session-token': sessionToken }
+      });
 
       if (error) throw error;
 
