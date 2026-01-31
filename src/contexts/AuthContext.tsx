@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
+  sessionToken: string | null;
   login: (password: string) => Promise<boolean>;
   logout: () => void;
   validatePassword: (password: string) => Promise<boolean>;
@@ -16,6 +17,7 @@ const SESSION_KEY = 'bloom_session_token';
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   useEffect(() => {
     checkSession();
@@ -23,21 +25,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkSession = async () => {
     try {
-      const sessionToken = localStorage.getItem(SESSION_KEY);
-      if (!sessionToken) {
+      const storedToken = localStorage.getItem(SESSION_KEY);
+      if (!storedToken) {
         setIsLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
-        .from('user_sessions')
-        .select('*')
-        .eq('session_token', sessionToken)
-        .gt('expires_at', new Date().toISOString())
-        .single();
+      // Validate session via secure edge function
+      const { data, error } = await supabase.functions.invoke('auth', {
+        body: { action: 'validate', sessionToken: storedToken }
+      });
 
-      if (data && !error) {
+      if (error) {
+        console.error('Session validation error:', error);
+        localStorage.removeItem(SESSION_KEY);
+        setIsLoading(false);
+        return;
+      }
+
+      if (data?.valid) {
         setIsAuthenticated(true);
+        setSessionToken(storedToken);
       } else {
         localStorage.removeItem(SESSION_KEY);
       }
@@ -51,36 +59,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (password: string): Promise<boolean> => {
     try {
-      const { data: settings, error } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'global_password')
-        .single();
+      // Login via secure edge function (password validated server-side)
+      const { data, error } = await supabase.functions.invoke('auth', {
+        body: { action: 'login', password }
+      });
 
-      if (error || !settings) {
-        console.error('Error fetching password:', error);
+      if (error) {
+        console.error('Login error:', error);
         return false;
       }
 
-      if (settings.value === password) {
-        // Create session
-        const sessionToken = crypto.randomUUID();
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 30);
-
-        const { error: sessionError } = await supabase
-          .from('user_sessions')
-          .insert({
-            session_token: sessionToken,
-            expires_at: expiresAt.toISOString()
-          });
-
-        if (sessionError) {
-          console.error('Error creating session:', sessionError);
-          return false;
-        }
-
-        localStorage.setItem(SESSION_KEY, sessionToken);
+      if (data?.success && data?.sessionToken) {
+        localStorage.setItem(SESSION_KEY, data.sessionToken);
+        setSessionToken(data.sessionToken);
         setIsAuthenticated(true);
         return true;
       }
@@ -93,30 +84,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    const sessionToken = localStorage.getItem(SESSION_KEY);
-    if (sessionToken) {
-      await supabase
-        .from('user_sessions')
-        .delete()
-        .eq('session_token', sessionToken);
+    const storedToken = localStorage.getItem(SESSION_KEY);
+    
+    if (storedToken) {
+      try {
+        await supabase.functions.invoke('auth', {
+          body: { action: 'logout', sessionToken: storedToken }
+        });
+      } catch (error) {
+        console.error('Logout error:', error);
+      }
     }
+    
     localStorage.removeItem(SESSION_KEY);
+    setSessionToken(null);
     setIsAuthenticated(false);
   };
 
   const validatePassword = async (password: string): Promise<boolean> => {
     try {
-      const { data: settings, error } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'global_password')
-        .single();
+      // Validate password via secure edge function
+      const { data, error } = await supabase.functions.invoke('auth', {
+        body: { action: 'validate-password', password }
+      });
 
-      if (error || !settings) {
+      if (error) {
+        console.error('Password validation error:', error);
         return false;
       }
 
-      return settings.value === password;
+      return data?.valid === true;
     } catch (error) {
       console.error('Error validating password:', error);
       return false;
@@ -124,7 +121,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoading, login, logout, validatePassword }}>
+    <AuthContext.Provider value={{ 
+      isAuthenticated, 
+      isLoading, 
+      sessionToken,
+      login, 
+      logout, 
+      validatePassword 
+    }}>
       {children}
     </AuthContext.Provider>
   );
