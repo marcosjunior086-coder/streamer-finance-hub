@@ -163,6 +163,57 @@ export function useStreamers() {
     }
   };
 
+  const addStreamersBatch = async (streamers: { name: string; streamer_id: string }[]): Promise<{ success: number; failed: number }> => {
+    if (!sessionToken) {
+      toast.error('Sessão inválida');
+      return { success: 0, failed: streamers.length };
+    }
+
+    let success = 0;
+    let failed = 0;
+
+    for (const streamer of streamers) {
+      try {
+        const { error } = await supabase.functions.invoke('api', {
+          body: {
+            resource: 'streamers',
+            action: 'create',
+            data: {
+              streamer_id: streamer.streamer_id,
+              name: streamer.name,
+              luck_gifts: 0,
+              exclusive_gifts: 0,
+              host_crystals: 0,
+              minutes: 0,
+              effective_days: 0
+            }
+          },
+          headers: { 'x-session-token': sessionToken }
+        });
+
+        if (error) {
+          failed++;
+        } else {
+          success++;
+        }
+      } catch (error) {
+        console.error('Error adding streamer in batch:', error);
+        failed++;
+      }
+    }
+
+    if (success > 0) {
+      toast.success(`${success} streamer${success !== 1 ? 's' : ''} importado${success !== 1 ? 's' : ''} com sucesso!`);
+      await fetchStreamers();
+    }
+
+    if (failed > 0) {
+      toast.error(`${failed} falha${failed !== 1 ? 's' : ''} na importação`);
+    }
+
+    return { success, failed };
+  };
+
   const clearMonthlyData = async (): Promise<boolean> => {
     if (!sessionToken) {
       toast.error('Sessão inválida');
@@ -217,6 +268,7 @@ export function useStreamers() {
     addStreamer,
     updateStreamer,
     deleteStreamer,
+    addStreamersBatch,
     clearMonthlyData,
     refetch: fetchStreamers
   };

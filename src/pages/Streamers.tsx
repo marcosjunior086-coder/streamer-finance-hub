@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { StreamersTable } from '@/components/streamers/StreamersTable';
 import { StreamerFormDialog } from '@/components/streamers/StreamerFormDialog';
+import { BatchImportDialog } from '@/components/streamers/BatchImportDialog';
 import { PasswordDialog } from '@/components/PasswordDialog';
 import { useStreamers } from '@/hooks/useStreamers';
 import { Streamer, StreamerFormData } from '@/types/streamer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { UserPlus, Search, Users, Trash2 } from 'lucide-react';
+import { UserPlus, Search, Users, Trash2, FileSpreadsheet } from 'lucide-react';
 
 export default function Streamers() {
   const {
@@ -23,6 +24,7 @@ export default function Streamers() {
     addStreamer,
     updateStreamer,
     deleteStreamer,
+    addStreamersBatch,
     clearMonthlyData
   } = useStreamers();
 
@@ -31,6 +33,7 @@ export default function Streamers() {
   const [deletingStreamer, setDeletingStreamer] = useState<Streamer | null>(null);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false);
+  const [isBatchImportOpen, setIsBatchImportOpen] = useState(false);
 
   const handleAdd = () => {
     setEditingStreamer(null);
@@ -85,6 +88,10 @@ export default function Streamers() {
               <Trash2 className="h-5 w-5 mr-2" />
               Limpar dados do mês
             </Button>
+            <Button onClick={() => setIsBatchImportOpen(true)} variant="outline">
+              <FileSpreadsheet className="h-5 w-5 mr-2" />
+              Importar Lote
+            </Button>
             <Button onClick={handleAdd} className="gradient-primary">
               <UserPlus className="h-5 w-5 mr-2" />
               Adicionar Streamer
@@ -137,6 +144,14 @@ export default function Streamers() {
           onOpenChange={setIsFormOpen}
           onSubmit={handleFormSubmit}
           editingStreamer={editingStreamer}
+        />
+
+        {/* Batch Import Dialog */}
+        <BatchImportDialog
+          open={isBatchImportOpen}
+          onOpenChange={setIsBatchImportOpen}
+          onImport={addStreamersBatch}
+          existingStreamers={allStreamers}
         />
 
         {/* Password Dialog for Delete */}
