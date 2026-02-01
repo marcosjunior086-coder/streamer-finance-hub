@@ -2,23 +2,27 @@ import { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useStreamers } from '@/hooks/useStreamers';
 import { useSnapshots } from '@/hooks/useSnapshots';
-import { 
-  ExportOptions, 
-  calculateHostUsd, 
-  calculateAgencyUsd, 
-  formatNumber, 
-  formatCurrency, 
-  formatMinutesToHours,
-  Streamer
-} from '@/types/streamer';
-import { Download, Copy, FileText, Check } from 'lucide-react';
+import { ExportOptions, Streamer } from '@/types/streamer';
+import { Copy, FileText, Check, Table2, FileType } from 'lucide-react';
 import { toast } from 'sonner';
+import { ExportPreview } from '@/components/export/ExportPreview';
+import { DownloadDropdown } from '@/components/export/DownloadDropdown';
+import { FieldSelection } from '@/components/export/FieldSelection';
+import {
+  ExportFormat,
+  DownloadFormat,
+  formatTextBlock,
+  downloadTxt,
+  downloadPdf,
+  downloadXlsx,
+  downloadCsv,
+} from '@/lib/export-utils';
 
 const defaultExportOptions: ExportOptions = {
   includeRanking: true,
@@ -41,6 +45,7 @@ export default function Export() {
   const [exportSource, setExportSource] = useState<'current' | 'snapshot'>('current');
   const [selectedSnapshot, setSelectedSnapshot] = useState<string>('');
   const [selectedStreamer, setSelectedStreamer] = useState<string>('all');
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('text');
   const [copied, setCopied] = useState(false);
 
   const toggleOption = (key: keyof ExportOptions) => {
@@ -58,7 +63,6 @@ export default function Export() {
       const snapshot = snapshots.find(s => s.id === selectedSnapshot);
       if (!snapshot) return null;
       
-      // Convert snapshot data to Streamer format
       return snapshot.data.map(s => ({
         id: s.streamer_id,
         streamer_id: s.streamer_id,
@@ -74,29 +78,6 @@ export default function Export() {
     }
   };
 
-  const formatExportData = (streamers: Streamer[]): string => {
-    const lines: string[] = [];
-
-    streamers.forEach((streamer, index) => {
-      const parts: string[] = [];
-      
-      if (exportOptions.includeRanking) parts.push(`🏆 ${index + 1}`);
-      if (exportOptions.includeName) parts.push(streamer.name);
-      if (exportOptions.includeId) parts.push(streamer.streamer_id);
-      if (exportOptions.includeLuckGifts) parts.push(formatNumber(streamer.luck_gifts));
-      if (exportOptions.includeExclusiveGifts) parts.push(formatNumber(streamer.exclusive_gifts));
-      if (exportOptions.includeHostCrystals) parts.push(formatNumber(streamer.host_crystals));
-      if (exportOptions.includeHostUsd) parts.push(formatCurrency(calculateHostUsd(streamer.host_crystals)));
-      if (exportOptions.includeAgencyUsd) parts.push(formatCurrency(calculateAgencyUsd(streamer.host_crystals)));
-      if (exportOptions.includeHours) parts.push(formatMinutesToHours(streamer.minutes));
-      if (exportOptions.includeDays) parts.push(String(streamer.effective_days));
-
-      lines.push(parts.join(' '));
-    });
-
-    return lines.join('\n');
-  };
-
   const handleCopy = async () => {
     const data = getDataToExport();
     if (!data || data.length === 0) {
@@ -104,7 +85,7 @@ export default function Export() {
       return;
     }
 
-    const text = formatExportData(data);
+    const text = formatTextBlock(data, exportOptions);
     
     try {
       await navigator.clipboard.writeText(text);
@@ -116,28 +97,39 @@ export default function Export() {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = (format: DownloadFormat) => {
     const data = getDataToExport();
     if (!data || data.length === 0) {
       toast.error('Nenhum dado para exportar');
       return;
     }
 
-    const text = formatExportData(data);
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `streamers_${new Date().toISOString().split('T')[0]}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    toast.success('Arquivo baixado com sucesso!');
+    const filename = `streamers_${new Date().toISOString().split('T')[0]}`;
+
+    try {
+      switch (format) {
+        case 'txt':
+          downloadTxt(formatTextBlock(data, exportOptions), filename);
+          break;
+        case 'pdf':
+          downloadPdf(formatTextBlock(data, exportOptions), filename);
+          break;
+        case 'xlsx':
+          downloadXlsx(data, exportOptions, filename);
+          break;
+        case 'csv':
+          downloadCsv(data, exportOptions, filename);
+          break;
+      }
+      toast.success(`Arquivo ${format.toUpperCase()} baixado com sucesso!`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Erro ao baixar arquivo');
+    }
   };
 
   const isLoading = streamersLoading || snapshotsLoading;
+  const dataToExport = getDataToExport();
 
   if (isLoading) {
     return (
@@ -156,7 +148,7 @@ export default function Export() {
         <div>
           <h1 className="text-3xl font-bold text-bloom">Exportar</h1>
           <p className="text-muted-foreground">
-            Exporte dados de streamers em formato pronto para WhatsApp, Excel ou Docs
+            Exporte dados em formato texto ou planilha para WhatsApp, Excel, Google Sheets e mais
           </p>
         </div>
 
@@ -228,91 +220,45 @@ export default function Export() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="ranking" 
-                    checked={exportOptions.includeRanking}
-                    onCheckedChange={() => toggleOption('includeRanking')}
-                  />
-                  <Label htmlFor="ranking">Ranking</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="name" 
-                    checked={exportOptions.includeName}
-                    onCheckedChange={() => toggleOption('includeName')}
-                  />
-                  <Label htmlFor="name">Nome</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="id" 
-                    checked={exportOptions.includeId}
-                    onCheckedChange={() => toggleOption('includeId')}
-                  />
-                  <Label htmlFor="id">ID</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="luck" 
-                    checked={exportOptions.includeLuckGifts}
-                    onCheckedChange={() => toggleOption('includeLuckGifts')}
-                  />
-                  <Label htmlFor="luck">Sorte</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="exclusive" 
-                    checked={exportOptions.includeExclusiveGifts}
-                    onCheckedChange={() => toggleOption('includeExclusiveGifts')}
-                  />
-                  <Label htmlFor="exclusive">Exclusivos</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="crystals" 
-                    checked={exportOptions.includeHostCrystals}
-                    onCheckedChange={() => toggleOption('includeHostCrystals')}
-                  />
-                  <Label htmlFor="crystals">Cristais</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="hostUsd" 
-                    checked={exportOptions.includeHostUsd}
-                    onCheckedChange={() => toggleOption('includeHostUsd')}
-                  />
-                  <Label htmlFor="hostUsd">Host $</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="agencyUsd" 
-                    checked={exportOptions.includeAgencyUsd}
-                    onCheckedChange={() => toggleOption('includeAgencyUsd')}
-                  />
-                  <Label htmlFor="agencyUsd">Agência $</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="hours" 
-                    checked={exportOptions.includeHours}
-                    onCheckedChange={() => toggleOption('includeHours')}
-                  />
-                  <Label htmlFor="hours">Horas</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="days" 
-                    checked={exportOptions.includeDays}
-                    onCheckedChange={() => toggleOption('includeDays')}
-                  />
-                  <Label htmlFor="days">Dias</Label>
-                </div>
-              </div>
+              <FieldSelection options={exportOptions} onToggle={toggleOption} />
             </CardContent>
           </Card>
         </div>
+
+        {/* Format Selection */}
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileType className="h-5 w-5 text-primary" />
+              Formato de Visualização
+            </CardTitle>
+            <CardDescription>
+              Escolha como visualizar a prévia dos dados
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RadioGroup
+              value={exportFormat}
+              onValueChange={(v) => setExportFormat(v as ExportFormat)}
+              className="flex gap-6"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="text" id="format-text" />
+                <Label htmlFor="format-text" className="flex items-center gap-2 cursor-pointer">
+                  <FileText className="h-4 w-4" />
+                  Texto (WhatsApp, Docs)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="spreadsheet" id="format-spreadsheet" />
+                <Label htmlFor="format-spreadsheet" className="flex items-center gap-2 cursor-pointer">
+                  <Table2 className="h-4 w-4" />
+                  Planilha (Excel, CSV)
+                </Label>
+              </div>
+            </RadioGroup>
+          </CardContent>
+        </Card>
 
         {/* Preview & Actions */}
         <Card className="glass">
@@ -323,13 +269,11 @@ export default function Export() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="p-4 rounded-lg bg-muted/30 font-mono text-sm max-h-64 overflow-auto whitespace-pre-wrap">
-              {(() => {
-                const data = getDataToExport();
-                if (!data || data.length === 0) return 'Nenhum dado disponível';
-                return formatExportData(data.slice(0, 5)) + (data.length > 5 ? '\n...' : '');
-              })()}
-            </div>
+            <ExportPreview
+              streamers={dataToExport || []}
+              options={exportOptions}
+              format={exportFormat}
+            />
 
             <div className="flex gap-4">
               <Button onClick={handleCopy} className="flex-1 gradient-primary">
@@ -341,14 +285,14 @@ export default function Export() {
                 ) : (
                   <>
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar
+                    Copiar Texto
                   </>
                 )}
               </Button>
-              <Button onClick={handleDownload} variant="outline" className="flex-1">
-                <Download className="h-4 w-4 mr-2" />
-                Baixar TXT
-              </Button>
+              <DownloadDropdown 
+                onDownload={handleDownload} 
+                disabled={!dataToExport || dataToExport.length === 0}
+              />
             </div>
           </CardContent>
         </Card>
