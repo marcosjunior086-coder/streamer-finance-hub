@@ -25,6 +25,7 @@ export default function Streamers() {
     updateStreamer,
     deleteStreamer,
     addStreamersBatch,
+    updateStreamersBatch,
     clearMonthlyData
   } = useStreamers();
 
@@ -150,7 +151,8 @@ export default function Streamers() {
         <BatchImportDialog
           open={isBatchImportOpen}
           onOpenChange={setIsBatchImportOpen}
-          onImport={addStreamersBatch}
+          onImportRegister={addStreamersBatch}
+          onImportUpdate={updateStreamersBatch}
           existingStreamers={allStreamers}
         />
 

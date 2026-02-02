@@ -203,12 +203,67 @@ export function useStreamers() {
     }
 
     if (success > 0) {
-      toast.success(`${success} streamer${success !== 1 ? 's' : ''} importado${success !== 1 ? 's' : ''} com sucesso!`);
+      toast.success(`${success} streamer${success !== 1 ? 's' : ''} cadastrado${success !== 1 ? 's' : ''} com sucesso!`);
       await fetchStreamers();
     }
 
     if (failed > 0) {
-      toast.error(`${failed} falha${failed !== 1 ? 's' : ''} na importação`);
+      toast.error(`${failed} falha${failed !== 1 ? 's' : ''} no cadastro`);
+    }
+
+    return { success, failed };
+  };
+
+  const updateStreamersBatch = async (updates: { streamer_id: string; luck_gifts: number; exclusive_gifts: number; minutes: number }[]): Promise<{ success: number; failed: number }> => {
+    if (!sessionToken) {
+      toast.error('Sessão inválida');
+      return { success: 0, failed: updates.length };
+    }
+
+    let success = 0;
+    let failed = 0;
+
+    for (const update of updates) {
+      try {
+        // Find the streamer by streamer_id
+        const existingStreamer = streamers.find(s => s.streamer_id === update.streamer_id);
+        if (!existingStreamer) {
+          failed++;
+          continue;
+        }
+
+        const { error } = await supabase.functions.invoke('api', {
+          body: {
+            resource: 'streamers',
+            action: 'update',
+            id: existingStreamer.id,
+            data: {
+              luck_gifts: update.luck_gifts,
+              exclusive_gifts: update.exclusive_gifts,
+              minutes: update.minutes
+            }
+          },
+          headers: { 'x-session-token': sessionToken }
+        });
+
+        if (error) {
+          failed++;
+        } else {
+          success++;
+        }
+      } catch (error) {
+        console.error('Error updating streamer in batch:', error);
+        failed++;
+      }
+    }
+
+    if (success > 0) {
+      toast.success(`${success} registro${success !== 1 ? 's' : ''} atualizado${success !== 1 ? 's' : ''} com sucesso!`);
+      await fetchStreamers();
+    }
+
+    if (failed > 0) {
+      toast.error(`${failed} falha${failed !== 1 ? 's' : ''} na atualização`);
     }
 
     return { success, failed };
@@ -269,6 +324,7 @@ export function useStreamers() {
     updateStreamer,
     deleteStreamer,
     addStreamersBatch,
+    updateStreamersBatch,
     clearMonthlyData,
     refetch: fetchStreamers
   };
