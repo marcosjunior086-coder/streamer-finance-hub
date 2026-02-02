@@ -27,7 +27,7 @@ export function useSnapshots() {
       // Transform the data to match our Snapshot interface
       const transformedData: Snapshot[] = (data?.data || []).map((item: any) => ({
         ...item,
-        period_type: item.period_type as 'weekly' | 'monthly' | 'yearly',
+        period_type: item.period_type as 'weekly' | 'monthly' | 'yearly' | 'custom',
         data: item.data as unknown as StreamerSnapshotData[]
       }));
 
@@ -45,7 +45,7 @@ export function useSnapshots() {
   }, [fetchSnapshots]);
 
   const createSnapshot = async (
-    periodType: 'weekly' | 'monthly' | 'yearly',
+    periodType: 'weekly' | 'monthly' | 'yearly' | 'custom',
     periodLabel: string,
     streamers: Streamer[]
   ): Promise<boolean> => {
@@ -133,7 +133,7 @@ export function useSnapshots() {
     }
   };
 
-  const getSnapshotsByPeriod = (periodType: 'weekly' | 'monthly' | 'yearly') => {
+  const getSnapshotsByPeriod = (periodType: 'weekly' | 'monthly' | 'yearly' | 'custom') => {
     return snapshots.filter(s => s.period_type === periodType);
   };
 

@@ -23,7 +23,7 @@ export interface StreamerFormData {
 
 export interface Snapshot {
   id: string;
-  period_type: 'weekly' | 'monthly' | 'yearly';
+  period_type: 'weekly' | 'monthly' | 'yearly' | 'custom';
   period_label: string;
   snapshot_date: string;
   data: StreamerSnapshotData[];
