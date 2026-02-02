@@ -1,54 +1,136 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { parseBatchInput, getImportSummary, ParsedStreamer } from '@/lib/batch-import-utils';
-import { Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { 
+  parseBatchInput, 
+  parseGiftUpdateInput,
+  parseFileToText,
+  fetchGoogleSheetsData,
+  getImportSummary, 
+  formatMinutesToHours,
+  ParsedStreamer,
+  ParsedGiftUpdate,
+  ImportMode
+} from '@/lib/batch-import-utils';
+import { Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, Link, FileUp, ClipboardPaste, Loader2 } from 'lucide-react';
 import { Streamer } from '@/types/streamer';
+import { toast } from 'sonner';
 
 interface BatchImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onImport: (streamers: { name: string; streamer_id: string }[]) => Promise<{ success: number; failed: number }>;
+  onImportRegister: (streamers: { name: string; streamer_id: string }[]) => Promise<{ success: number; failed: number }>;
+  onImportUpdate: (updates: { streamer_id: string; luck_gifts: number; exclusive_gifts: number; minutes: number }[]) => Promise<{ success: number; failed: number }>;
   existingStreamers: Streamer[];
 }
+
+type InputMethod = 'paste' | 'file' | 'sheets';
 
 export function BatchImportDialog({
   open,
   onOpenChange,
-  onImport,
+  onImportRegister,
+  onImportUpdate,
   existingStreamers
 }: BatchImportDialogProps) {
+  const [mode, setMode] = useState<ImportMode>('register');
+  const [inputMethod, setInputMethod] = useState<InputMethod>('paste');
   const [rawInput, setRawInput] = useState('');
+  const [sheetsUrl, setSheetsUrl] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const parsed = useMemo(() => {
-    if (!rawInput.trim()) return [];
+  // Parse based on mode
+  const parsedRegister = useMemo(() => {
+    if (mode !== 'register' || !rawInput.trim()) return [];
     return parseBatchInput(rawInput, existingStreamers);
-  }, [rawInput, existingStreamers]);
+  }, [rawInput, existingStreamers, mode]);
 
-  const summary = useMemo(() => getImportSummary(parsed), [parsed]);
+  const parsedUpdate = useMemo(() => {
+    if (mode !== 'update' || !rawInput.trim()) return [];
+    return parseGiftUpdateInput(rawInput, existingStreamers);
+  }, [rawInput, existingStreamers, mode]);
+
+  const summaryRegister = useMemo(() => getImportSummary(parsedRegister), [parsedRegister]);
+  const summaryUpdate = useMemo(() => getImportSummary(parsedUpdate), [parsedUpdate]);
+
+  const summary = mode === 'register' ? summaryRegister : summaryUpdate;
+  const parsed = mode === 'register' ? parsedRegister : parsedUpdate;
+
+  // Handle file upload
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsLoading(true);
+    try {
+      const text = await parseFileToText(file);
+      setRawInput(text);
+      toast.success(`Arquivo "${file.name}" carregado com sucesso!`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao ler arquivo');
+    } finally {
+      setIsLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Handle Google Sheets URL
+  const handleLoadSheets = async () => {
+    if (!sheetsUrl.trim()) {
+      toast.error('Cole o link do Google Sheets');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const text = await fetchGoogleSheetsData(sheetsUrl);
+      setRawInput(text);
+      toast.success('Dados do Google Sheets carregados!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao acessar planilha');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleImport = async () => {
-    const validStreamers = parsed.filter(p => p.isValid).map(p => ({
-      name: p.name,
-      streamer_id: p.streamer_id
-    }));
-
-    if (validStreamers.length === 0) return;
+    if (summary.valid === 0) return;
 
     setIsImporting(true);
     try {
-      const result = await onImport(validStreamers);
+      let result: { success: number; failed: number };
+
+      if (mode === 'register') {
+        const validStreamers = parsedRegister.filter(p => p.isValid).map(p => ({
+          name: p.name,
+          streamer_id: p.streamer_id
+        }));
+        result = await onImportRegister(validStreamers);
+      } else {
+        const validUpdates = parsedUpdate.filter(p => p.isValid).map(p => ({
+          streamer_id: p.streamer_id,
+          luck_gifts: p.luck_gifts,
+          exclusive_gifts: p.exclusive_gifts,
+          minutes: p.minutes
+        }));
+        result = await onImportUpdate(validUpdates);
+      }
+
       setImportResult(result);
       
       if (result.success > 0 && result.failed === 0) {
-        // All successful - close after brief delay
         setTimeout(() => {
           handleClose();
         }, 1500);
@@ -60,23 +142,55 @@ export function BatchImportDialog({
 
   const handleClose = () => {
     setRawInput('');
+    setSheetsUrl('');
     setImportResult(null);
+    setMode('register');
+    setInputMethod('paste');
     onOpenChange(false);
+  };
+
+  const handleModeChange = (newMode: string) => {
+    setMode(newMode as ImportMode);
+    setRawInput('');
+    setSheetsUrl('');
+    setImportResult(null);
   };
 
   const showPreview = parsed.length > 0 && !importResult;
   const showResult = importResult !== null;
 
+  const getPlaceholder = () => {
+    if (mode === 'register') {
+      return `Cole aqui os dados. Exemplos:
+
+Nome,ID
+Jubscreuza,10597690
+Rô Ramos,10844565
+
+ou
+
+Luh.ᴮˡᵒᵒᵐ🦋10702736
+Cat 10587003`;
+    }
+    return `Cole aqui os dados. Formato:
+ID, Sorte, Exclusivo, Minutos
+
+10597690,15000,8000,1500
+10844565,12000,6500,1200
+
+ou separado por TAB/espaço`;
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" />
-            Importar Streamers em Lote
+            Importar em Lote
           </DialogTitle>
           <DialogDescription>
-            Cole os dados de uma planilha ou lista. Formatos aceitos: CSV, tab, ou nome seguido de ID.
+            Importe streamers ou atualize presentes a partir de planilhas.
           </DialogDescription>
         </DialogHeader>
 
@@ -89,7 +203,7 @@ export function BatchImportDialog({
             )}
             <div className="text-center">
               <p className="text-xl font-semibold">
-                {importResult.success} streamer{importResult.success !== 1 ? 's' : ''} importado{importResult.success !== 1 ? 's' : ''}
+                {importResult.success} {mode === 'register' ? 'streamer' : 'atualização'}{importResult.success !== 1 ? 's' : ''} {mode === 'register' ? 'importado' : 'realizada'}{importResult.success !== 1 ? 's' : ''}
               </p>
               {importResult.failed > 0 && (
                 <p className="text-muted-foreground">
@@ -101,18 +215,139 @@ export function BatchImportDialog({
           </div>
         ) : (
           <>
-            <div className="space-y-4 flex-1 min-h-0">
-              <div className="space-y-2">
-                <Label htmlFor="batch-input">Dados dos Streamers</Label>
-                <Textarea
-                  id="batch-input"
-                  value={rawInput}
-                  onChange={(e) => setRawInput(e.target.value)}
-                  placeholder={`Cole aqui. Exemplos:\n\nJubscreuza,10597690\nRô Ramos,10844565\n\nou\n\nLuh.ᴮˡᵒᵒᵐ🦋10702736\nCat 10587003`}
-                  className="min-h-[120px] font-mono text-sm"
-                />
-              </div>
+            {/* Mode Selection */}
+            <Tabs value={mode} onValueChange={handleModeChange} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="register">
+                  <Upload className="h-4 w-4 mr-2" />
+                  Cadastro de Streamers
+                </TabsTrigger>
+                <TabsTrigger value="update">
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Preenchimento de Presentes
+                </TabsTrigger>
+              </TabsList>
 
+              <TabsContent value="register" className="mt-4">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Cadastre novos streamers com <strong>Nome</strong> e <strong>ID</strong>. IDs já existentes serão ignorados.
+                </p>
+              </TabsContent>
+
+              <TabsContent value="update" className="mt-4">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Atualize presentes do período atual: <strong>ID</strong>, <strong>Sorte</strong>, <strong>Exclusivo</strong>, <strong>Minutos</strong>. IDs não encontrados serão ignorados.
+                </p>
+              </TabsContent>
+            </Tabs>
+
+            {/* Input Method Selection */}
+            <div className="flex gap-2 mb-4">
+              <Button
+                variant={inputMethod === 'paste' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setInputMethod('paste')}
+              >
+                <ClipboardPaste className="h-4 w-4 mr-2" />
+                Colar Dados
+              </Button>
+              <Button
+                variant={inputMethod === 'file' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setInputMethod('file')}
+              >
+                <FileUp className="h-4 w-4 mr-2" />
+                Upload Arquivo
+              </Button>
+              <Button
+                variant={inputMethod === 'sheets' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setInputMethod('sheets')}
+              >
+                <Link className="h-4 w-4 mr-2" />
+                Google Sheets
+              </Button>
+            </div>
+
+            <div className="space-y-4 flex-1 min-h-0">
+              {/* Input Methods */}
+              {inputMethod === 'paste' && (
+                <div className="space-y-2">
+                  <Label htmlFor="batch-input">Dados</Label>
+                  <Textarea
+                    id="batch-input"
+                    value={rawInput}
+                    onChange={(e) => setRawInput(e.target.value)}
+                    placeholder={getPlaceholder()}
+                    className="min-h-[120px] font-mono text-sm"
+                  />
+                </div>
+              )}
+
+              {inputMethod === 'file' && (
+                <div className="space-y-2">
+                  <Label>Upload de Arquivo</Label>
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,.txt,.xlsx,.xls"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                    <label htmlFor="file-upload" className="cursor-pointer">
+                      {isLoading ? (
+                        <Loader2 className="h-10 w-10 mx-auto text-muted-foreground animate-spin" />
+                      ) : (
+                        <FileUp className="h-10 w-10 mx-auto text-muted-foreground" />
+                      )}
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Clique para selecionar ou arraste um arquivo
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        CSV, TXT, XLSX ou XLS
+                      </p>
+                    </label>
+                  </div>
+                  {rawInput && (
+                    <div className="p-2 bg-muted rounded text-sm">
+                      <span className="text-green-600">✓</span> Arquivo carregado - {rawInput.split('\n').length} linhas
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {inputMethod === 'sheets' && (
+                <div className="space-y-2">
+                  <Label>Link do Google Sheets</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={sheetsUrl}
+                      onChange={(e) => setSheetsUrl(e.target.value)}
+                      placeholder="https://docs.google.com/spreadsheets/d/..."
+                      className="flex-1"
+                    />
+                    <Button onClick={handleLoadSheets} disabled={isLoading}>
+                      {isLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        'Carregar'
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    A planilha deve ter permissão "Qualquer pessoa com o link pode ver"
+                  </p>
+                  {rawInput && (
+                    <div className="p-2 bg-muted rounded text-sm">
+                      <span className="text-green-600">✓</span> Dados carregados - {rawInput.split('\n').length} linhas
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Preview */}
               {showPreview && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -125,41 +360,80 @@ export function BatchImportDialog({
                       {summary.invalid > 0 && (
                         <Badge variant="destructive" className="bg-destructive/20 text-destructive">
                           <XCircle className="h-3 w-3 mr-1" />
-                          {summary.invalid} inválido{summary.invalid !== 1 ? 's' : ''}
+                          {summary.invalid} ignorado{summary.invalid !== 1 ? 's' : ''}
                         </Badge>
                       )}
                     </div>
                   </div>
 
                   <ScrollArea className="h-[200px] border rounded-md">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-12">Status</TableHead>
-                          <TableHead>Nome</TableHead>
-                          <TableHead>ID</TableHead>
-                          <TableHead>Erro</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {parsed.map((item, idx) => (
-                          <TableRow key={idx} className={!item.isValid ? 'bg-destructive/5' : ''}>
-                            <TableCell>
-                              {item.isValid ? (
-                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                              ) : (
-                                <XCircle className="h-4 w-4 text-destructive" />
-                              )}
-                            </TableCell>
-                            <TableCell className="font-medium">{item.name || '-'}</TableCell>
-                            <TableCell className="font-mono text-sm">{item.streamer_id || '-'}</TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {item.error || '-'}
-                            </TableCell>
+                    {mode === 'register' ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-12">Status</TableHead>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>ID</TableHead>
+                            <TableHead>Observação</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {parsedRegister.map((item, idx) => (
+                            <TableRow key={idx} className={!item.isValid ? 'bg-muted/50' : ''}>
+                              <TableCell>
+                                {item.isValid ? (
+                                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">{item.name || '-'}</TableCell>
+                              <TableCell className="font-mono text-sm">{item.streamer_id || '-'}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {item.error || '-'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-12">Status</TableHead>
+                            <TableHead>Streamer</TableHead>
+                            <TableHead>ID</TableHead>
+                            <TableHead className="text-right">Sorte</TableHead>
+                            <TableHead className="text-right">Exclusivo</TableHead>
+                            <TableHead className="text-right">Tempo</TableHead>
+                            <TableHead>Observação</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {parsedUpdate.map((item, idx) => (
+                            <TableRow key={idx} className={!item.isValid ? 'bg-muted/50' : ''}>
+                              <TableCell>
+                                {item.isValid ? (
+                                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">{item.streamerName || '-'}</TableCell>
+                              <TableCell className="font-mono text-sm">{item.streamer_id || '-'}</TableCell>
+                              <TableCell className="text-right">{item.luck_gifts.toLocaleString()}</TableCell>
+                              <TableCell className="text-right">{item.exclusive_gifts.toLocaleString()}</TableCell>
+                              <TableCell className="text-right font-mono">
+                                {formatMinutesToHours(item.minutes)}
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {item.error || '-'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
                   </ScrollArea>
                 </div>
               )}
@@ -175,7 +449,10 @@ export function BatchImportDialog({
                 className="gradient-primary"
               >
                 <Upload className="h-4 w-4 mr-2" />
-                {isImporting ? 'Importando...' : `Importar ${summary.valid} Streamer${summary.valid !== 1 ? 's' : ''}`}
+                {isImporting ? 'Importando...' : mode === 'register' 
+                  ? `Cadastrar ${summary.valid} Streamer${summary.valid !== 1 ? 's' : ''}`
+                  : `Atualizar ${summary.valid} Registro${summary.valid !== 1 ? 's' : ''}`
+                }
               </Button>
             </DialogFooter>
           </>
