@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { 
   ExportOptions, 
@@ -10,8 +11,8 @@ import {
   Streamer
 } from '@/types/streamer';
 
-export type ExportFormat = 'text' | 'spreadsheet';
-export type DownloadFormat = 'txt' | 'pdf' | 'xlsx' | 'csv';
+export type ExportFormat = 'text' | 'spreadsheet' | 'report';
+export type DownloadFormat = 'txt' | 'pdf' | 'xlsx' | 'csv' | 'pdf-report';
 
 interface ExportField {
   key: keyof ExportOptions;
@@ -160,4 +161,131 @@ export function downloadCsv(streamers: Streamer[], options: ExportOptions, filen
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+export async function downloadPdfReport(
+  streamers: Streamer[], 
+  options: ExportOptions, 
+  filename: string,
+  periodLabel?: string
+): Promise<void> {
+  const { headers, rows } = formatSpreadsheetPreview(streamers, options);
+  
+  const doc = new jsPDF({
+    orientation: headers.length > 6 ? 'landscape' : 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 15;
+  let currentY = margin;
+
+  // Load and add logo
+  try {
+    const logoImg = await loadImage('/bloom-agency-logo.png');
+    const logoHeight = 20;
+    const logoWidth = (logoImg.width / logoImg.height) * logoHeight;
+    const logoX = (pageWidth - logoWidth) / 2;
+    doc.addImage(logoImg, 'PNG', logoX, currentY, logoWidth, logoHeight);
+    currentY += logoHeight + 8;
+  } catch (error) {
+    // If logo fails to load, just continue without it
+    console.warn('Could not load logo:', error);
+  }
+
+  // Title
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Relatório de Streamers', pageWidth / 2, currentY, { align: 'center' });
+  currentY += 8;
+
+  // Period label if provided
+  if (periodLabel) {
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Período: ${periodLabel}`, pageWidth / 2, currentY, { align: 'center' });
+    currentY += 6;
+  }
+
+  // Generation date
+  doc.setFontSize(9);
+  doc.setTextColor(100);
+  const generatedAt = new Date().toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  doc.text(`Gerado em: ${generatedAt}`, pageWidth / 2, currentY, { align: 'center' });
+  doc.setTextColor(0);
+  currentY += 10;
+
+  // Determine column alignments based on field type
+  const columnStyles: { [key: number]: { halign: 'left' | 'center' | 'right' } } = {};
+  headers.forEach((header, index) => {
+    if (['Nome', 'ID'].includes(header)) {
+      columnStyles[index] = { halign: 'left' };
+    } else if (['Ranking'].includes(header)) {
+      columnStyles[index] = { halign: 'center' };
+    } else {
+      columnStyles[index] = { halign: 'right' };
+    }
+  });
+
+  // Generate table
+  autoTable(doc, {
+    head: [headers],
+    body: rows,
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    styles: {
+      fontSize: 9,
+      cellPadding: 3,
+      lineColor: [200, 200, 200],
+      lineWidth: 0.1,
+    },
+    headStyles: {
+      fillColor: [255, 47, 146], // Primary pink color
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      halign: 'center',
+    },
+    columnStyles,
+    alternateRowStyles: {
+      fillColor: [248, 248, 248],
+    },
+    didDrawPage: (data) => {
+      // Footer with page numbers
+      const pageNumber = doc.getCurrentPageInfo().pageNumber;
+      const totalPages = doc.getNumberOfPages();
+      doc.setFontSize(8);
+      doc.setTextColor(128);
+      doc.text(
+        `Página ${pageNumber} de ${totalPages}`,
+        pageWidth / 2,
+        pageHeight - 10,
+        { align: 'center' }
+      );
+      doc.text(
+        'Bloom Agency',
+        margin,
+        pageHeight - 10
+      );
+    },
+  });
+
+  doc.save(`${filename}.pdf`);
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
 }

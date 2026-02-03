@@ -9,7 +9,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useStreamers } from '@/hooks/useStreamers';
 import { useSnapshots } from '@/hooks/useSnapshots';
 import { ExportOptions, Streamer } from '@/types/streamer';
-import { Copy, FileText, Check, Table2, FileType } from 'lucide-react';
+import { Copy, FileText, Check, Table2, FileType, FileBarChart } from 'lucide-react';
 import { toast } from 'sonner';
 import { ExportPreview } from '@/components/export/ExportPreview';
 import { DownloadDropdown } from '@/components/export/DownloadDropdown';
@@ -22,6 +22,7 @@ import {
   downloadPdf,
   downloadXlsx,
   downloadCsv,
+  downloadPdfReport,
 } from '@/lib/export-utils';
 
 const defaultExportOptions: ExportOptions = {
@@ -97,7 +98,15 @@ export default function Export() {
     }
   };
 
-  const handleDownload = (format: DownloadFormat) => {
+  const getPeriodLabel = (): string | undefined => {
+    if (exportSource === 'snapshot') {
+      const snapshot = snapshots.find(s => s.id === selectedSnapshot);
+      return snapshot?.period_label;
+    }
+    return undefined;
+  };
+
+  const handleDownload = async (format: DownloadFormat) => {
     const data = getDataToExport();
     if (!data || data.length === 0) {
       toast.error('Nenhum dado para exportar');
@@ -120,8 +129,11 @@ export default function Export() {
         case 'csv':
           downloadCsv(data, exportOptions, filename);
           break;
+        case 'pdf-report':
+          await downloadPdfReport(data, exportOptions, filename, getPeriodLabel());
+          break;
       }
-      toast.success(`Arquivo ${format.toUpperCase()} baixado com sucesso!`);
+      toast.success(`Arquivo ${format === 'pdf-report' ? 'PDF Relatório' : format.toUpperCase()} baixado com sucesso!`);
     } catch (error) {
       console.error('Export error:', error);
       toast.error('Erro ao baixar arquivo');
@@ -240,7 +252,7 @@ export default function Export() {
             <RadioGroup
               value={exportFormat}
               onValueChange={(v) => setExportFormat(v as ExportFormat)}
-              className="flex gap-6"
+              className="flex flex-wrap gap-6"
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="text" id="format-text" />
@@ -254,6 +266,13 @@ export default function Export() {
                 <Label htmlFor="format-spreadsheet" className="flex items-center gap-2 cursor-pointer">
                   <Table2 className="h-4 w-4" />
                   Planilha (Excel, CSV)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="report" id="format-report" />
+                <Label htmlFor="format-report" className="flex items-center gap-2 cursor-pointer">
+                  <FileBarChart className="h-4 w-4" />
+                  Relatório PDF
                 </Label>
               </div>
             </RadioGroup>
