@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 
 // ===== Types =====
 export type ImportMode = 'register' | 'update';
+export type UpdateImportType = 'unique' | 'duplicate';
 
 export interface ParsedStreamer {
   name: string;
@@ -18,6 +19,7 @@ export interface ParsedGiftUpdate {
   isValid: boolean;
   error?: string;
   streamerName?: string; // For display purposes
+  daysCount?: number; // For duplicate mode - counts how many entries were consolidated
 }
 
 export interface BatchImportResult {
@@ -313,4 +315,38 @@ export function getImportSummary(parsed: ParsedStreamer[] | ParsedGiftUpdate[]):
   const valid = parsed.filter(p => p.isValid).length;
   const invalid = parsed.filter(p => !p.isValid).length;
   return { valid, invalid };
+}
+
+// ===== Consolidation for Duplicate IDs =====
+export function consolidateDuplicateIds(parsed: ParsedGiftUpdate[]): ParsedGiftUpdate[] {
+  const consolidated = new Map<string, ParsedGiftUpdate>();
+  const invalidEntries: ParsedGiftUpdate[] = [];
+  
+  for (const entry of parsed) {
+    // Keep invalid entries as-is for display
+    if (!entry.isValid) {
+      invalidEntries.push(entry);
+      continue;
+    }
+    
+    const existing = consolidated.get(entry.streamer_id);
+    if (existing) {
+      // Consolidate: sum all values
+      consolidated.set(entry.streamer_id, {
+        ...existing,
+        luck_gifts: existing.luck_gifts + entry.luck_gifts,
+        exclusive_gifts: existing.exclusive_gifts + entry.exclusive_gifts,
+        minutes: existing.minutes + entry.minutes,
+        daysCount: (existing.daysCount || 1) + 1
+      });
+    } else {
+      consolidated.set(entry.streamer_id, {
+        ...entry,
+        daysCount: 1
+      });
+    }
+  }
+  
+  // Return consolidated valid entries + invalid entries
+  return [...consolidated.values(), ...invalidEntries];
 }

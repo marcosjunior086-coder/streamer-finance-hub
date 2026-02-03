@@ -15,13 +15,16 @@ import {
   fetchGoogleSheetsData,
   getImportSummary, 
   formatMinutesToHours,
+  consolidateDuplicateIds,
   ParsedStreamer,
   ParsedGiftUpdate,
-  ImportMode
+  ImportMode,
+  UpdateImportType
 } from '@/lib/batch-import-utils';
-import { Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, Link, FileUp, ClipboardPaste, Loader2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, Link, FileUp, ClipboardPaste, Loader2, Users, CalendarDays } from 'lucide-react';
 import { Streamer } from '@/types/streamer';
 import { toast } from 'sonner';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface BatchImportDialogProps {
   open: boolean;
@@ -41,6 +44,7 @@ export function BatchImportDialog({
   existingStreamers
 }: BatchImportDialogProps) {
   const [mode, setMode] = useState<ImportMode>('register');
+  const [updateImportType, setUpdateImportType] = useState<UpdateImportType>('unique');
   const [inputMethod, setInputMethod] = useState<InputMethod>('paste');
   const [rawInput, setRawInput] = useState('');
   const [sheetsUrl, setSheetsUrl] = useState('');
@@ -55,10 +59,18 @@ export function BatchImportDialog({
     return parseBatchInput(rawInput, existingStreamers);
   }, [rawInput, existingStreamers, mode]);
 
-  const parsedUpdate = useMemo(() => {
+  // Parse for update mode - apply consolidation if duplicate mode
+  const parsedUpdateRaw = useMemo(() => {
     if (mode !== 'update' || !rawInput.trim()) return [];
     return parseGiftUpdateInput(rawInput, existingStreamers);
   }, [rawInput, existingStreamers, mode]);
+
+  const parsedUpdate = useMemo(() => {
+    if (updateImportType === 'duplicate') {
+      return consolidateDuplicateIds(parsedUpdateRaw);
+    }
+    return parsedUpdateRaw;
+  }, [parsedUpdateRaw, updateImportType]);
 
   const summaryRegister = useMemo(() => getImportSummary(parsedRegister), [parsedRegister]);
   const summaryUpdate = useMemo(() => getImportSummary(parsedUpdate), [parsedUpdate]);
@@ -154,6 +166,11 @@ export function BatchImportDialog({
     setRawInput('');
     setSheetsUrl('');
     setImportResult(null);
+    setUpdateImportType('unique');
+  };
+
+  const handleUpdateTypeChange = (newType: string) => {
+    setUpdateImportType(newType as UpdateImportType);
   };
 
   const showPreview = parsed.length > 0 && !importResult;
@@ -234,10 +251,45 @@ ou separado por TAB/espaço`;
                 </p>
               </TabsContent>
 
-              <TabsContent value="update" className="mt-4">
-                <p className="text-sm text-muted-foreground mb-4">
+              <TabsContent value="update" className="mt-4 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Atualize presentes do período atual: <strong>ID</strong>, <strong>Sorte</strong>, <strong>Exclusivo</strong>, <strong>Minutos</strong>. IDs não encontrados serão ignorados.
                 </p>
+                
+                {/* Import Type Selection for Update Mode */}
+                <div className="rounded-lg border bg-card p-4">
+                  <Label className="text-sm font-medium mb-3 block">Tipo de Importação</Label>
+                  <RadioGroup 
+                    value={updateImportType} 
+                    onValueChange={handleUpdateTypeChange}
+                    className="grid grid-cols-2 gap-4"
+                  >
+                    <div className="flex items-start space-x-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+                      <RadioGroupItem value="unique" id="unique" className="mt-0.5" />
+                      <div className="space-y-1">
+                        <Label htmlFor="unique" className="font-medium cursor-pointer flex items-center gap-2">
+                          <Users className="h-4 w-4" />
+                          IDs Únicos
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Cada ID aparece uma vez. Valores já consolidados.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+                      <RadioGroupItem value="duplicate" id="duplicate" className="mt-0.5" />
+                      <div className="space-y-1">
+                        <Label htmlFor="duplicate" className="font-medium cursor-pointer flex items-center gap-2">
+                          <CalendarDays className="h-4 w-4" />
+                          IDs Duplicados
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Mesmo ID várias vezes (dados diários). Sistema consolida automaticamente.
+                        </p>
+                      </div>
+                    </div>
+                  </RadioGroup>
+                </div>
               </TabsContent>
             </Tabs>
 
@@ -406,6 +458,9 @@ ou separado por TAB/espaço`;
                             <TableHead className="text-right">Sorte</TableHead>
                             <TableHead className="text-right">Exclusivo</TableHead>
                             <TableHead className="text-right">Tempo</TableHead>
+                            {updateImportType === 'duplicate' && (
+                              <TableHead className="text-center">Dias</TableHead>
+                            )}
                             <TableHead>Observação</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -426,8 +481,21 @@ ou separado por TAB/espaço`;
                               <TableCell className="text-right font-mono">
                                 {formatMinutesToHours(item.minutes)}
                               </TableCell>
+                              {updateImportType === 'duplicate' && (
+                                <TableCell className="text-center">
+                                  {item.isValid && item.daysCount && item.daysCount > 1 ? (
+                                    <Badge variant="secondary" className="text-xs">
+                                      {item.daysCount} dias
+                                    </Badge>
+                                  ) : item.isValid ? (
+                                    <span className="text-muted-foreground">1</span>
+                                  ) : '-'}
+                                </TableCell>
+                              )}
                               <TableCell className="text-sm text-muted-foreground">
-                                {item.error || '-'}
+                                {item.error || (updateImportType === 'duplicate' && item.daysCount && item.daysCount > 1 
+                                  ? `Consolidado de ${item.daysCount} registros` 
+                                  : '-')}
                               </TableCell>
                             </TableRow>
                           ))}
