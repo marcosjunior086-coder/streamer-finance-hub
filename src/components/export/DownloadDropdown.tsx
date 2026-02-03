@@ -6,7 +6,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Download, FileText, FileSpreadsheet, File } from 'lucide-react';
+import { Download, FileText, FileSpreadsheet, File, FileBarChart } from 'lucide-react';
 import { DownloadFormat } from '@/lib/export-utils';
 
 interface DownloadDropdownProps {
@@ -23,14 +23,18 @@ export function DownloadDropdown({ onDownload, disabled }: DownloadDropdownProps
           Baixar
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuItem onClick={() => onDownload('txt')} className="cursor-pointer">
           <FileText className="h-4 w-4 mr-2" />
           Texto (.txt)
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onDownload('pdf')} className="cursor-pointer">
           <File className="h-4 w-4 mr-2" />
-          PDF (.pdf)
+          PDF Simples (.pdf)
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onDownload('pdf-report')} className="cursor-pointer">
+          <FileBarChart className="h-4 w-4 mr-2" />
+          Relatório PDF (.pdf)
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => onDownload('xlsx')} className="cursor-pointer">
