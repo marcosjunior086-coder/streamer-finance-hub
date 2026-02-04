@@ -20,6 +20,7 @@ export interface ParsedGiftUpdate {
   error?: string;
   streamerName?: string; // For display purposes
   daysCount?: number; // For duplicate mode - counts how many entries were consolidated
+  validDaysCount?: number; // For duplicate mode - counts only days with minutes >= 120
 }
 
 export interface BatchImportResult {
@@ -318,6 +319,9 @@ export function getImportSummary(parsed: ParsedStreamer[] | ParsedGiftUpdate[]):
 }
 
 // ===== Consolidation for Duplicate IDs =====
+// Minimum minutes required for a day to be considered valid
+const MIN_MINUTES_FOR_VALID_DAY = 120;
+
 export function consolidateDuplicateIds(parsed: ParsedGiftUpdate[]): ParsedGiftUpdate[] {
   const consolidated = new Map<string, ParsedGiftUpdate>();
   const invalidEntries: ParsedGiftUpdate[] = [];
@@ -329,6 +333,9 @@ export function consolidateDuplicateIds(parsed: ParsedGiftUpdate[]): ParsedGiftU
       continue;
     }
     
+    // Check if this day is valid (minutes >= 120)
+    const isDayValid = entry.minutes >= MIN_MINUTES_FOR_VALID_DAY;
+    
     const existing = consolidated.get(entry.streamer_id);
     if (existing) {
       // Consolidate: sum all values
@@ -337,12 +344,14 @@ export function consolidateDuplicateIds(parsed: ParsedGiftUpdate[]): ParsedGiftU
         luck_gifts: existing.luck_gifts + entry.luck_gifts,
         exclusive_gifts: existing.exclusive_gifts + entry.exclusive_gifts,
         minutes: existing.minutes + entry.minutes,
-        daysCount: (existing.daysCount || 1) + 1
+        daysCount: (existing.daysCount || 1) + 1,
+        validDaysCount: (existing.validDaysCount || 0) + (isDayValid ? 1 : 0)
       });
     } else {
       consolidated.set(entry.streamer_id, {
         ...entry,
-        daysCount: 1
+        daysCount: 1,
+        validDaysCount: isDayValid ? 1 : 0
       });
     }
   }
