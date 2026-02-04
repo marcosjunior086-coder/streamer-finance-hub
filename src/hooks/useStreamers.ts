@@ -214,7 +214,7 @@ export function useStreamers() {
     return { success, failed };
   };
 
-  const updateStreamersBatch = async (updates: { streamer_id: string; luck_gifts: number; exclusive_gifts: number; minutes: number }[]): Promise<{ success: number; failed: number }> => {
+  const updateStreamersBatch = async (updates: { streamer_id: string; luck_gifts: number; exclusive_gifts: number; minutes: number; effective_days?: number }[]): Promise<{ success: number; failed: number }> => {
     if (!sessionToken) {
       toast.error('Sessão inválida');
       return { success: 0, failed: updates.length };
@@ -232,16 +232,23 @@ export function useStreamers() {
           continue;
         }
 
+        const updateData: Record<string, number> = {
+          luck_gifts: update.luck_gifts,
+          exclusive_gifts: update.exclusive_gifts,
+          minutes: update.minutes
+        };
+
+        // Include effective_days if provided (from duplicate ID consolidation)
+        if (update.effective_days !== undefined) {
+          updateData.effective_days = update.effective_days;
+        }
+
         const { error } = await supabase.functions.invoke('api', {
           body: {
             resource: 'streamers',
             action: 'update',
             id: existingStreamer.id,
-            data: {
-              luck_gifts: update.luck_gifts,
-              exclusive_gifts: update.exclusive_gifts,
-              minutes: update.minutes
-            }
+            data: updateData
           },
           headers: { 'x-session-token': sessionToken }
         });

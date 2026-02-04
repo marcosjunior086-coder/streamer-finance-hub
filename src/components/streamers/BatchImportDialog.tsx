@@ -30,7 +30,7 @@ interface BatchImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImportRegister: (streamers: { name: string; streamer_id: string }[]) => Promise<{ success: number; failed: number }>;
-  onImportUpdate: (updates: { streamer_id: string; luck_gifts: number; exclusive_gifts: number; minutes: number }[]) => Promise<{ success: number; failed: number }>;
+  onImportUpdate: (updates: { streamer_id: string; luck_gifts: number; exclusive_gifts: number; minutes: number; effective_days?: number }[]) => Promise<{ success: number; failed: number }>;
   existingStreamers: Streamer[];
 }
 
@@ -135,7 +135,11 @@ export function BatchImportDialog({
           streamer_id: p.streamer_id,
           luck_gifts: p.luck_gifts,
           exclusive_gifts: p.exclusive_gifts,
-          minutes: p.minutes
+          minutes: p.minutes,
+          // Include effective_days only for duplicate mode (validDaysCount is set during consolidation)
+          ...(updateImportType === 'duplicate' && p.validDaysCount !== undefined 
+            ? { effective_days: p.validDaysCount } 
+            : {})
         }));
         result = await onImportUpdate(validUpdates);
       }
@@ -483,19 +487,19 @@ ou separado por TAB/espaço`;
                               </TableCell>
                               {updateImportType === 'duplicate' && (
                                 <TableCell className="text-center">
-                                  {item.isValid && item.daysCount && item.daysCount > 1 ? (
+                                  {item.isValid && item.validDaysCount !== undefined ? (
                                     <Badge variant="secondary" className="text-xs">
-                                      {item.daysCount} dias
+                                      {item.validDaysCount}/{item.daysCount}
                                     </Badge>
-                                  ) : item.isValid ? (
-                                    <span className="text-muted-foreground">1</span>
                                   ) : '-'}
                                 </TableCell>
                               )}
                               <TableCell className="text-sm text-muted-foreground">
                                 {item.error || (updateImportType === 'duplicate' && item.daysCount && item.daysCount > 1 
-                                  ? `Consolidado de ${item.daysCount} registros` 
-                                  : '-')}
+                                  ? `${item.daysCount} registros → ${item.validDaysCount} dias válidos (≥2h)` 
+                                  : updateImportType === 'duplicate' && item.isValid
+                                    ? (item.validDaysCount === 1 ? '1 dia válido' : '0 dias válidos (< 2h)')
+                                    : '-')}
                               </TableCell>
                             </TableRow>
                           ))}
