@@ -17,6 +17,7 @@ import { FieldSelection } from '@/components/export/FieldSelection';
 import {
   ExportFormat,
   DownloadFormat,
+  PdfOrientation,
   formatTextBlock,
   downloadTxt,
   downloadPdf,
@@ -47,6 +48,7 @@ export default function Export() {
   const [selectedSnapshot, setSelectedSnapshot] = useState<string>('');
   const [selectedStreamer, setSelectedStreamer] = useState<string>('all');
   const [exportFormat, setExportFormat] = useState<ExportFormat>('text');
+  const [pdfOrientation, setPdfOrientation] = useState<PdfOrientation>('landscape');
   const [copied, setCopied] = useState(false);
 
   const toggleOption = (key: keyof ExportOptions) => {
@@ -130,7 +132,7 @@ export default function Export() {
           downloadCsv(data, exportOptions, filename);
           break;
         case 'pdf-report':
-          await downloadPdfReport(data, exportOptions, filename, getPeriodLabel());
+          await downloadPdfReport(data, exportOptions, filename, getPeriodLabel(), pdfOrientation);
           break;
       }
       toast.success(`Arquivo ${format === 'pdf-report' ? 'PDF Relatório' : format.toUpperCase()} baixado com sucesso!`);
@@ -248,7 +250,7 @@ export default function Export() {
               Escolha como visualizar a prévia dos dados
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <RadioGroup
               value={exportFormat}
               onValueChange={(v) => setExportFormat(v as ExportFormat)}
@@ -276,6 +278,31 @@ export default function Export() {
                 </Label>
               </div>
             </RadioGroup>
+
+            {/* PDF Orientation Option - only show when report format is selected */}
+            {exportFormat === 'report' && (
+              <div className="pt-4 border-t">
+                <Label className="text-sm font-medium mb-3 block">Orientação do PDF</Label>
+                <RadioGroup
+                  value={pdfOrientation}
+                  onValueChange={(v) => setPdfOrientation(v as PdfOrientation)}
+                  className="flex gap-6"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="landscape" id="orientation-landscape" />
+                    <Label htmlFor="orientation-landscape" className="cursor-pointer">
+                      Paisagem
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="portrait" id="orientation-portrait" />
+                    <Label htmlFor="orientation-portrait" className="cursor-pointer">
+                      Retrato
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            )}
           </CardContent>
         </Card>
 
