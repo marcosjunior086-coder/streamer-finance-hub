@@ -13,6 +13,7 @@ import {
 
 export type ExportFormat = 'text' | 'spreadsheet' | 'report';
 export type DownloadFormat = 'txt' | 'pdf' | 'xlsx' | 'csv' | 'pdf-report';
+export type PdfOrientation = 'portrait' | 'landscape';
 
 interface ExportField {
   key: keyof ExportOptions;
@@ -24,11 +25,11 @@ const exportFields: ExportField[] = [
   { key: 'includeRanking', label: 'Ranking', getValue: (s, i) => String(i + 1) },
   { key: 'includeName', label: 'Nome', getValue: (s) => s.name },
   { key: 'includeId', label: 'ID', getValue: (s) => s.streamer_id },
+  { key: 'includeLuckGifts', label: 'Sorte', getValue: (s) => formatNumber(s.luck_gifts) },
   { key: 'includeExclusiveGifts', label: 'Exclusivos', getValue: (s) => formatNumber(s.exclusive_gifts) },
+  { key: 'includeHostCrystals', label: 'Cristais', getValue: (s) => formatNumber(s.host_crystals) },
   { key: 'includeHostUsd', label: 'Host $', getValue: (s) => formatCurrency(calculateHostUsd(s.host_crystals)) },
   { key: 'includeAgencyUsd', label: 'Agência $', getValue: (s) => formatCurrency(calculateAgencyUsd(s.host_crystals)) },
-  { key: 'includeHostCrystals', label: 'Cristais', getValue: (s) => formatNumber(s.host_crystals) },
-  { key: 'includeLuckGifts', label: 'Sorte', getValue: (s) => formatNumber(s.luck_gifts) },
   { key: 'includeHours', label: 'Horas', getValue: (s) => formatMinutesToHours(s.minutes) },
   { key: 'includeDays', label: 'Dias', getValue: (s) => String(s.effective_days) },
 ];
@@ -167,12 +168,13 @@ export async function downloadPdfReport(
   streamers: Streamer[], 
   options: ExportOptions, 
   filename: string,
-  periodLabel?: string
+  periodLabel?: string,
+  orientation: PdfOrientation = 'landscape'
 ): Promise<void> {
   const { headers, rows } = formatSpreadsheetPreview(streamers, options);
   
   const doc = new jsPDF({
-    orientation: headers.length > 6 ? 'landscape' : 'portrait',
+    orientation: orientation,
     unit: 'mm',
     format: 'a4'
   });
@@ -198,14 +200,16 @@ export async function downloadPdfReport(
   // Title
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text('Relatório de Streamers', pageWidth / 2, currentY, { align: 'center' });
+  doc.text('Relatorio de Streamers', pageWidth / 2, currentY, { align: 'center' });
   currentY += 8;
 
   // Period label if provided
   if (periodLabel) {
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Período: ${periodLabel}`, pageWidth / 2, currentY, { align: 'center' });
+    // Sanitize period label for PDF
+    const sanitizedPeriodLabel = sanitizeTextForPdf(periodLabel);
+    doc.text(`Periodo: ${sanitizedPeriodLabel}`, pageWidth / 2, currentY, { align: 'center' });
     currentY += 6;
   }
 
@@ -219,7 +223,9 @@ export async function downloadPdfReport(
     hour: '2-digit',
     minute: '2-digit'
   });
-  doc.text(`Gerado em: ${generatedAt}`, pageWidth / 2, currentY, { align: 'center' });
+  // Sanitize date (remove accents from month names)
+  const sanitizedDate = sanitizeTextForPdf(generatedAt);
+  doc.text(`Gerado em: ${sanitizedDate}`, pageWidth / 2, currentY, { align: 'center' });
   doc.setTextColor(0);
   currentY += 10;
 
@@ -235,10 +241,14 @@ export async function downloadPdfReport(
     }
   });
 
+  // Sanitize all text data for PDF (remove emojis and normalize accents)
+  const sanitizedHeaders = headers.map(h => sanitizeTextForPdf(h));
+  const sanitizedRows = rows.map(row => row.map(cell => sanitizeTextForPdf(cell)));
+
   // Generate table
   autoTable(doc, {
-    head: [headers],
-    body: rows,
+    head: [sanitizedHeaders],
+    body: sanitizedRows,
     startY: currentY,
     margin: { left: margin, right: margin },
     styles: {
@@ -246,6 +256,7 @@ export async function downloadPdfReport(
       cellPadding: 3,
       lineColor: [200, 200, 200],
       lineWidth: 0.1,
+      font: 'helvetica',
     },
     headStyles: {
       fillColor: [255, 47, 146], // Primary pink color
@@ -264,7 +275,7 @@ export async function downloadPdfReport(
       doc.setFontSize(8);
       doc.setTextColor(128);
       doc.text(
-        `Página ${pageNumber} de ${totalPages}`,
+        `Pagina ${pageNumber} de ${totalPages}`,
         pageWidth / 2,
         pageHeight - 10,
         { align: 'center' }
@@ -278,6 +289,50 @@ export async function downloadPdfReport(
   });
 
   doc.save(`${filename}.pdf`);
+}
+
+// Sanitize text for PDF by removing emojis and converting accented characters
+function sanitizeTextForPdf(text: string): string {
+  if (!text) return '';
+  
+  // Remove emojis and special unicode characters (keeps basic latin + extended latin)
+  let sanitized = text
+    // Remove emoji characters
+    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+    .replace(/[\u{2600}-\u{26FF}]/gu, '')
+    .replace(/[\u{2700}-\u{27BF}]/gu, '')
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, '')
+    .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
+    // Remove other special symbols
+    .replace(/[\u{200D}]/gu, '')
+    .replace(/[\u{20E3}]/gu, '')
+    .replace(/[\u{E0020}-\u{E007F}]/gu, '');
+  
+  // Normalize accented characters to ASCII equivalents for better PDF compatibility
+  const accentMap: { [key: string]: string } = {
+    'á': 'a', 'à': 'a', 'ã': 'a', 'â': 'a', 'ä': 'a',
+    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+    'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+    'ó': 'o', 'ò': 'o', 'õ': 'o', 'ô': 'o', 'ö': 'o',
+    'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+    'ç': 'c', 'ñ': 'n',
+    'Á': 'A', 'À': 'A', 'Ã': 'A', 'Â': 'A', 'Ä': 'A',
+    'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E',
+    'Í': 'I', 'Ì': 'I', 'Î': 'I', 'Ï': 'I',
+    'Ó': 'O', 'Ò': 'O', 'Õ': 'O', 'Ô': 'O', 'Ö': 'O',
+    'Ú': 'U', 'Ù': 'U', 'Û': 'U', 'Ü': 'U',
+    'Ç': 'C', 'Ñ': 'N'
+  };
+  
+  sanitized = sanitized.split('').map(char => accentMap[char] || char).join('');
+  
+  // Remove any remaining non-printable characters and trim
+  sanitized = sanitized.replace(/[^\x20-\x7E]/g, '').trim();
+  
+  // Clean up multiple spaces
+  sanitized = sanitized.replace(/\s+/g, ' ');
+  
+  return sanitized;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
