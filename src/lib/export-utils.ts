@@ -295,11 +295,12 @@ export async function downloadPdfReport(
   doc.save(`${filename}.pdf`);
 }
 
-// Sanitize text for PDF by removing emojis and converting accented characters
-function sanitizeTextForPdf(text: string): string {
+// Light sanitization for PDF - only remove characters that cause rendering issues
+// Preserves accented characters since Helvetica supports Latin-1
+function sanitizeTextForPdfLight(text: string): string {
   if (!text) return '';
   
-  // Remove emojis and special unicode characters (keeps basic latin + extended latin)
+  // Only remove emoji characters that can't be rendered by standard PDF fonts
   let sanitized = text
     // Remove emoji characters
     .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
@@ -307,12 +308,27 @@ function sanitizeTextForPdf(text: string): string {
     .replace(/[\u{2700}-\u{27BF}]/gu, '')
     .replace(/[\u{FE00}-\u{FE0F}]/gu, '')
     .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
-    // Remove other special symbols
+    // Remove zero-width and variation selectors
     .replace(/[\u{200D}]/gu, '')
     .replace(/[\u{20E3}]/gu, '')
-    .replace(/[\u{E0020}-\u{E007F}]/gu, '');
+    .replace(/[\u{E0020}-\u{E007F}]/gu, '')
+    // Remove other problematic unicode ranges
+    .replace(/[\u{2000}-\u{206F}]/gu, ' ') // General punctuation (replace with space)
+    .replace(/[\u{FFF0}-\u{FFFF}]/gu, ''); // Specials
   
-  // Normalize accented characters to ASCII equivalents for better PDF compatibility
+  // Clean up multiple spaces and trim
+  sanitized = sanitized.replace(/\s+/g, ' ').trim();
+  
+  return sanitized;
+}
+
+// For basic PDF text export (not tabular) - more aggressive sanitization
+function sanitizeTextForPdf(text: string): string {
+  if (!text) return '';
+  
+  let sanitized = sanitizeTextForPdfLight(text);
+  
+  // For non-table content, also normalize accents for better compatibility
   const accentMap: { [key: string]: string } = {
     'á': 'a', 'à': 'a', 'ã': 'a', 'â': 'a', 'ä': 'a',
     'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
@@ -329,12 +345,6 @@ function sanitizeTextForPdf(text: string): string {
   };
   
   sanitized = sanitized.split('').map(char => accentMap[char] || char).join('');
-  
-  // Remove any remaining non-printable characters and trim
-  sanitized = sanitized.replace(/[^\x20-\x7E]/g, '').trim();
-  
-  // Clean up multiple spaces
-  sanitized = sanitized.replace(/\s+/g, ' ');
   
   return sanitized;
 }
