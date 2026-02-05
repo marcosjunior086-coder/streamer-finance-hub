@@ -68,7 +68,9 @@ export function formatSpreadsheetPreview(streamers: Streamer[], options: ExportO
 }
 
 export function downloadTxt(content: string, filename: string): void {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  // Use BOM for UTF-8 to ensure proper encoding of special characters
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + content], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -153,7 +155,9 @@ export function downloadCsv(streamers: Streamer[], options: ExportOptions, filen
   const ws = XLSX.utils.aoa_to_sheet(data);
   const csv = XLSX.utils.sheet_to_csv(ws);
   
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  // Use BOM for UTF-8 to ensure proper encoding of emojis and special characters
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -197,7 +201,7 @@ export async function downloadPdfReport(
     console.warn('Could not load logo:', error);
   }
 
-  // Title
+  // Title (use safe ASCII for PDF fonts)
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
   doc.text('Relatorio de Streamers', pageWidth / 2, currentY, { align: 'center' });
@@ -207,8 +211,8 @@ export async function downloadPdfReport(
   if (periodLabel) {
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    // Sanitize period label for PDF
-    const sanitizedPeriodLabel = sanitizeTextForPdf(periodLabel);
+    // Sanitize period label for PDF compatibility
+    const sanitizedPeriodLabel = sanitizeTextForPdfLight(periodLabel);
     doc.text(`Periodo: ${sanitizedPeriodLabel}`, pageWidth / 2, currentY, { align: 'center' });
     currentY += 6;
   }
@@ -224,7 +228,7 @@ export async function downloadPdfReport(
     minute: '2-digit'
   });
   // Sanitize date (remove accents from month names)
-  const sanitizedDate = sanitizeTextForPdf(generatedAt);
+  const sanitizedDate = sanitizeTextForPdfLight(generatedAt);
   doc.text(`Gerado em: ${sanitizedDate}`, pageWidth / 2, currentY, { align: 'center' });
   doc.setTextColor(0);
   currentY += 10;
@@ -241,9 +245,9 @@ export async function downloadPdfReport(
     }
   });
 
-  // Sanitize all text data for PDF (remove emojis and normalize accents)
-  const sanitizedHeaders = headers.map(h => sanitizeTextForPdf(h));
-  const sanitizedRows = rows.map(row => row.map(cell => sanitizeTextForPdf(cell)));
+  // Sanitize text for PDF - preserve as much as possible, only remove unsupported chars
+  const sanitizedHeaders = headers.map(h => sanitizeTextForPdfLight(h));
+  const sanitizedRows = rows.map(row => row.map(cell => sanitizeTextForPdfLight(cell)));
 
   // Generate table
   autoTable(doc, {
@@ -291,11 +295,12 @@ export async function downloadPdfReport(
   doc.save(`${filename}.pdf`);
 }
 
-// Sanitize text for PDF by removing emojis and converting accented characters
-function sanitizeTextForPdf(text: string): string {
+// Light sanitization for PDF - only remove characters that cause rendering issues
+// Preserves accented characters since Helvetica supports Latin-1
+function sanitizeTextForPdfLight(text: string): string {
   if (!text) return '';
   
-  // Remove emojis and special unicode characters (keeps basic latin + extended latin)
+  // Only remove emoji characters that can't be rendered by standard PDF fonts
   let sanitized = text
     // Remove emoji characters
     .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
@@ -303,12 +308,27 @@ function sanitizeTextForPdf(text: string): string {
     .replace(/[\u{2700}-\u{27BF}]/gu, '')
     .replace(/[\u{FE00}-\u{FE0F}]/gu, '')
     .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
-    // Remove other special symbols
+    // Remove zero-width and variation selectors
     .replace(/[\u{200D}]/gu, '')
     .replace(/[\u{20E3}]/gu, '')
-    .replace(/[\u{E0020}-\u{E007F}]/gu, '');
+    .replace(/[\u{E0020}-\u{E007F}]/gu, '')
+    // Remove other problematic unicode ranges
+    .replace(/[\u{2000}-\u{206F}]/gu, ' ') // General punctuation (replace with space)
+    .replace(/[\u{FFF0}-\u{FFFF}]/gu, ''); // Specials
   
-  // Normalize accented characters to ASCII equivalents for better PDF compatibility
+  // Clean up multiple spaces and trim
+  sanitized = sanitized.replace(/\s+/g, ' ').trim();
+  
+  return sanitized;
+}
+
+// For basic PDF text export (not tabular) - more aggressive sanitization
+function sanitizeTextForPdf(text: string): string {
+  if (!text) return '';
+  
+  let sanitized = sanitizeTextForPdfLight(text);
+  
+  // For non-table content, also normalize accents for better compatibility
   const accentMap: { [key: string]: string } = {
     'á': 'a', 'à': 'a', 'ã': 'a', 'â': 'a', 'ä': 'a',
     'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
@@ -325,12 +345,6 @@ function sanitizeTextForPdf(text: string): string {
   };
   
   sanitized = sanitized.split('').map(char => accentMap[char] || char).join('');
-  
-  // Remove any remaining non-printable characters and trim
-  sanitized = sanitized.replace(/[^\x20-\x7E]/g, '').trim();
-  
-  // Clean up multiple spaces
-  sanitized = sanitized.replace(/\s+/g, ' ');
   
   return sanitized;
 }
