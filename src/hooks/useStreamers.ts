@@ -163,26 +163,26 @@ export function useStreamers() {
     }
   };
 
-  const addStreamersBatch = async (streamers: { name: string; streamer_id: string; action: 'create' | 'update' }[]): Promise<{ success: number; failed: number }> => {
+  const addStreamersBatch = async (batchItems: { name: string; streamer_id: string; action: 'create' | 'update' }[]): Promise<{ success: number; failed: number }> => {
     if (!sessionToken) {
       toast.error('Sessão inválida');
-      return { success: 0, failed: streamers.length };
+      return { success: 0, failed: batchItems.length };
     }
 
     let success = 0;
     let failed = 0;
 
-    for (const streamer of streamers) {
+    for (const item of batchItems) {
       try {
-        if (streamer.action === 'create') {
+        if (item.action === 'create') {
           // Create new streamer
           const { error } = await supabase.functions.invoke('api', {
             body: {
               resource: 'streamers',
               action: 'create',
               data: {
-                streamer_id: streamer.streamer_id,
-                name: streamer.name,
+                streamer_id: item.streamer_id,
+                name: item.name,
                 luck_gifts: 0,
                 exclusive_gifts: 0,
                 host_crystals: 0,
@@ -198,9 +198,9 @@ export function useStreamers() {
           } else {
             success++;
           }
-        } else if (streamer.action === 'update') {
+        } else if (item.action === 'update') {
           // Find the existing streamer to update their name
-          const existingStreamer = streamers.find(s => s.streamer_id === streamer.streamer_id);
+          const existingStreamer = streamers.find(s => s.streamer_id === item.streamer_id);
           if (!existingStreamer) {
             failed++;
             continue;
@@ -212,7 +212,7 @@ export function useStreamers() {
               action: 'update',
               id: existingStreamer.id,
               data: {
-                name: streamer.name
+                name: item.name
               }
             },
             headers: { 'x-session-token': sessionToken }
@@ -230,8 +230,8 @@ export function useStreamers() {
       }
     }
 
-    const created = streamers.filter(s => s.action === 'create').length;
-    const updated = streamers.filter(s => s.action === 'update').length;
+    const created = batchItems.filter(s => s.action === 'create').length;
+    const updated = batchItems.filter(s => s.action === 'update').length;
     
     if (success > 0) {
       if (created > 0 && updated > 0) {
