@@ -29,7 +29,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 interface BatchImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onImportRegister: (streamers: { name: string; streamer_id: string }[]) => Promise<{ success: number; failed: number }>;
+  onImportRegister: (streamers: { name: string; streamer_id: string; action: 'create' | 'update' }[]) => Promise<{ success: number; failed: number }>;
   onImportUpdate: (updates: { streamer_id: string; luck_gifts: number; exclusive_gifts: number; minutes: number; effective_days?: number }[]) => Promise<{ success: number; failed: number }>;
   existingStreamers: Streamer[];
 }
