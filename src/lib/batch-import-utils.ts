@@ -9,6 +9,8 @@ export interface ParsedStreamer {
   streamer_id: string;
   isValid: boolean;
   error?: string;
+  action?: 'create' | 'update' | 'skip'; // Action to take for this entry
+  existingName?: string; // Current name if updating
 }
 
 export interface ParsedGiftUpdate {
