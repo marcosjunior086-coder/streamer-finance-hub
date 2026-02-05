@@ -126,9 +126,10 @@ export function BatchImportDialog({
       let result: { success: number; failed: number };
 
       if (mode === 'register') {
-        const validStreamers = parsedRegister.filter(p => p.isValid).map(p => ({
+        const validStreamers = parsedRegister.filter(p => p.isValid && (p.action === 'create' || p.action === 'update')).map(p => ({
           name: p.name,
-          streamer_id: p.streamer_id
+          streamer_id: p.streamer_id,
+          action: p.action as 'create' | 'update'
         }));
         result = await onImportRegister(validStreamers);
       } else {
