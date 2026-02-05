@@ -430,6 +430,7 @@ ou separado por TAB/espaço`;
                         <TableHeader>
                           <TableRow>
                             <TableHead className="w-12">Status</TableHead>
+                            <TableHead className="w-20">Ação</TableHead>
                             <TableHead>Nome</TableHead>
                             <TableHead>ID</TableHead>
                             <TableHead>Observação</TableHead>
@@ -437,12 +438,29 @@ ou separado por TAB/espaço`;
                         </TableHeader>
                         <TableBody>
                           {parsedRegister.map((item, idx) => (
-                            <TableRow key={idx} className={!item.isValid ? 'bg-muted/50' : ''}>
+                            <TableRow key={idx} className={!item.isValid ? 'bg-muted/50' : item.action === 'update' ? 'bg-yellow-500/10' : ''}>
                               <TableCell>
                                 {item.isValid ? (
                                   <CheckCircle2 className="h-4 w-4 text-green-500" />
                                 ) : (
                                   <XCircle className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {item.action === 'create' && (
+                                  <Badge variant="default" className="bg-green-500/20 text-green-700 dark:text-green-400 text-xs">
+                                    Novo
+                                  </Badge>
+                                )}
+                                {item.action === 'update' && (
+                                  <Badge variant="default" className="bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 text-xs">
+                                    Atualizar
+                                  </Badge>
+                                )}
+                                {item.action === 'skip' && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    Ignorar
+                                  </Badge>
                                 )}
                               </TableCell>
                               <TableCell className="font-medium">{item.name || '-'}</TableCell>
