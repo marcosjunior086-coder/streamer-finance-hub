@@ -9,6 +9,8 @@ export interface ParsedStreamer {
   streamer_id: string;
   isValid: boolean;
   error?: string;
+  action?: 'create' | 'update' | 'skip'; // Action to take for this entry
+  existingName?: string; // Current name if updating
 }
 
 export interface ParsedGiftUpdate {
@@ -109,7 +111,9 @@ export function parseBatchInput(input: string, existingStreamers: { name: string
   );
   
   const dataLines = isHeader ? lines.slice(1) : lines;
-  const existingIds = new Set(existingStreamers.map(s => s.streamer_id));
+  
+  // Create a map of existing streamers by ID for quick lookup
+  const existingById = new Map(existingStreamers.map(s => [s.streamer_id, s.name]));
   const batchIds = new Set<string>();
   
   for (const line of dataLines) {
@@ -119,24 +123,56 @@ export function parseBatchInput(input: string, existingStreamers: { name: string
     const parsed = parseRegistrationLine(trimmedLine);
     
     if (parsed) {
-      // For registration mode: skip if ID already exists (don't error, just warn)
-      if (existingIds.has(parsed.streamer_id)) {
-        results.push({
-          ...parsed,
-          isValid: false,
-          error: `ID "${parsed.streamer_id}" já existe - ignorado`
-        });
+      const existingName = existingById.get(parsed.streamer_id);
+      
+      if (existingName !== undefined) {
+        // ID already exists - check if name is different
+        if (existingName === parsed.name) {
+          // Same ID and same name - skip (no action needed)
+          results.push({
+            ...parsed,
+            isValid: false,
+            action: 'skip',
+            existingName,
+            error: 'Já cadastrado com mesmo nome - ignorado'
+          });
+        } else {
+          // Same ID but different name - mark for update
+          if (batchIds.has(parsed.streamer_id)) {
+            // Already processed in this batch
+            results.push({
+              ...parsed,
+              isValid: false,
+              action: 'skip',
+              existingName,
+              error: 'Duplicado neste lote'
+            });
+          } else {
+            batchIds.add(parsed.streamer_id);
+            results.push({
+              ...parsed,
+              isValid: true,
+              action: 'update',
+              existingName,
+              error: `Nome será atualizado: "${existingName}" → "${parsed.name}"`
+            });
+          }
+        }
       } else if (batchIds.has(parsed.streamer_id)) {
+        // New ID but already in this batch
         results.push({
           ...parsed,
           isValid: false,
+          action: 'skip',
           error: 'Duplicado neste lote'
         });
       } else {
+        // New ID - create new streamer
         batchIds.add(parsed.streamer_id);
         results.push({
           ...parsed,
-          isValid: true
+          isValid: true,
+          action: 'create'
         });
       }
     } else {
@@ -144,6 +180,7 @@ export function parseBatchInput(input: string, existingStreamers: { name: string
         name: trimmedLine.substring(0, 30),
         streamer_id: '',
         isValid: false,
+        action: 'skip',
         error: 'Formato inválido'
       });
     }

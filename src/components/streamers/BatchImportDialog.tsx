@@ -29,7 +29,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 interface BatchImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onImportRegister: (streamers: { name: string; streamer_id: string }[]) => Promise<{ success: number; failed: number }>;
+  onImportRegister: (streamers: { name: string; streamer_id: string; action: 'create' | 'update' }[]) => Promise<{ success: number; failed: number }>;
   onImportUpdate: (updates: { streamer_id: string; luck_gifts: number; exclusive_gifts: number; minutes: number; effective_days?: number }[]) => Promise<{ success: number; failed: number }>;
   existingStreamers: Streamer[];
 }
@@ -126,9 +126,10 @@ export function BatchImportDialog({
       let result: { success: number; failed: number };
 
       if (mode === 'register') {
-        const validStreamers = parsedRegister.filter(p => p.isValid).map(p => ({
+        const validStreamers = parsedRegister.filter(p => p.isValid && (p.action === 'create' || p.action === 'update')).map(p => ({
           name: p.name,
-          streamer_id: p.streamer_id
+          streamer_id: p.streamer_id,
+          action: p.action as 'create' | 'update'
         }));
         result = await onImportRegister(validStreamers);
       } else {
@@ -252,7 +253,7 @@ ou separado por TAB/espaço`;
 
               <TabsContent value="register" className="mt-4">
                 <p className="text-sm text-muted-foreground mb-4">
-                  Cadastre novos streamers com <strong>Nome</strong> e <strong>ID</strong>. IDs já existentes serão ignorados.
+                  Cadastre streamers com <strong>Nome</strong> e <strong>ID</strong>. Se o ID já existir, o nome será atualizado automaticamente. IDs idênticos com mesmo nome serão ignorados.
                 </p>
               </TabsContent>
 
@@ -429,6 +430,7 @@ ou separado por TAB/espaço`;
                         <TableHeader>
                           <TableRow>
                             <TableHead className="w-12">Status</TableHead>
+                            <TableHead className="w-20">Ação</TableHead>
                             <TableHead>Nome</TableHead>
                             <TableHead>ID</TableHead>
                             <TableHead>Observação</TableHead>
@@ -436,12 +438,29 @@ ou separado por TAB/espaço`;
                         </TableHeader>
                         <TableBody>
                           {parsedRegister.map((item, idx) => (
-                            <TableRow key={idx} className={!item.isValid ? 'bg-muted/50' : ''}>
+                            <TableRow key={idx} className={!item.isValid ? 'bg-muted/50' : item.action === 'update' ? 'bg-yellow-500/10' : ''}>
                               <TableCell>
                                 {item.isValid ? (
                                   <CheckCircle2 className="h-4 w-4 text-green-500" />
                                 ) : (
                                   <XCircle className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {item.action === 'create' && (
+                                  <Badge variant="default" className="bg-green-500/20 text-green-700 dark:text-green-400 text-xs">
+                                    Novo
+                                  </Badge>
+                                )}
+                                {item.action === 'update' && (
+                                  <Badge variant="default" className="bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 text-xs">
+                                    Atualizar
+                                  </Badge>
+                                )}
+                                {item.action === 'skip' && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    Ignorar
+                                  </Badge>
                                 )}
                               </TableCell>
                               <TableCell className="font-medium">{item.name || '-'}</TableCell>
