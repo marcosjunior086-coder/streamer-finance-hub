@@ -155,7 +155,9 @@ export function downloadCsv(streamers: Streamer[], options: ExportOptions, filen
   const ws = XLSX.utils.aoa_to_sheet(data);
   const csv = XLSX.utils.sheet_to_csv(ws);
   
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  // Use BOM for UTF-8 to ensure proper encoding of emojis and special characters
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
