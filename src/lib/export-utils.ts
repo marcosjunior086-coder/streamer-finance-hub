@@ -201,7 +201,7 @@ export async function downloadPdfReport(
     console.warn('Could not load logo:', error);
   }
 
-  // Title
+  // Title (use safe ASCII for PDF fonts)
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
   doc.text('Relatorio de Streamers', pageWidth / 2, currentY, { align: 'center' });
@@ -211,8 +211,8 @@ export async function downloadPdfReport(
   if (periodLabel) {
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    // Sanitize period label for PDF
-    const sanitizedPeriodLabel = sanitizeTextForPdf(periodLabel);
+    // Sanitize period label for PDF compatibility
+    const sanitizedPeriodLabel = sanitizeTextForPdfLight(periodLabel);
     doc.text(`Periodo: ${sanitizedPeriodLabel}`, pageWidth / 2, currentY, { align: 'center' });
     currentY += 6;
   }
@@ -228,7 +228,7 @@ export async function downloadPdfReport(
     minute: '2-digit'
   });
   // Sanitize date (remove accents from month names)
-  const sanitizedDate = sanitizeTextForPdf(generatedAt);
+  const sanitizedDate = sanitizeTextForPdfLight(generatedAt);
   doc.text(`Gerado em: ${sanitizedDate}`, pageWidth / 2, currentY, { align: 'center' });
   doc.setTextColor(0);
   currentY += 10;
@@ -245,9 +245,9 @@ export async function downloadPdfReport(
     }
   });
 
-  // Sanitize all text data for PDF (remove emojis and normalize accents)
-  const sanitizedHeaders = headers.map(h => sanitizeTextForPdf(h));
-  const sanitizedRows = rows.map(row => row.map(cell => sanitizeTextForPdf(cell)));
+  // Sanitize text for PDF - preserve as much as possible, only remove unsupported chars
+  const sanitizedHeaders = headers.map(h => sanitizeTextForPdfLight(h));
+  const sanitizedRows = rows.map(row => row.map(cell => sanitizeTextForPdfLight(cell)));
 
   // Generate table
   autoTable(doc, {
