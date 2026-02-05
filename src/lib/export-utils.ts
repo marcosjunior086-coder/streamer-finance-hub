@@ -68,7 +68,9 @@ export function formatSpreadsheetPreview(streamers: Streamer[], options: ExportO
 }
 
 export function downloadTxt(content: string, filename: string): void {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  // Use BOM for UTF-8 to ensure proper encoding of special characters
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + content], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
