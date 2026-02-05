@@ -163,7 +163,7 @@ export function useStreamers() {
     }
   };
 
-  const addStreamersBatch = async (streamers: { name: string; streamer_id: string }[]): Promise<{ success: number; failed: number }> => {
+  const addStreamersBatch = async (streamers: { name: string; streamer_id: string; action: 'create' | 'update' }[]): Promise<{ success: number; failed: number }> => {
     if (!sessionToken) {
       toast.error('Sessão inválida');
       return { success: 0, failed: streamers.length };
@@ -174,41 +174,78 @@ export function useStreamers() {
 
     for (const streamer of streamers) {
       try {
-        const { error } = await supabase.functions.invoke('api', {
-          body: {
-            resource: 'streamers',
-            action: 'create',
-            data: {
-              streamer_id: streamer.streamer_id,
-              name: streamer.name,
-              luck_gifts: 0,
-              exclusive_gifts: 0,
-              host_crystals: 0,
-              minutes: 0,
-              effective_days: 0
-            }
-          },
-          headers: { 'x-session-token': sessionToken }
-        });
+        if (streamer.action === 'create') {
+          // Create new streamer
+          const { error } = await supabase.functions.invoke('api', {
+            body: {
+              resource: 'streamers',
+              action: 'create',
+              data: {
+                streamer_id: streamer.streamer_id,
+                name: streamer.name,
+                luck_gifts: 0,
+                exclusive_gifts: 0,
+                host_crystals: 0,
+                minutes: 0,
+                effective_days: 0
+              }
+            },
+            headers: { 'x-session-token': sessionToken }
+          });
 
-        if (error) {
-          failed++;
-        } else {
-          success++;
+          if (error) {
+            failed++;
+          } else {
+            success++;
+          }
+        } else if (streamer.action === 'update') {
+          // Find the existing streamer to update their name
+          const existingStreamer = allStreamers.find(s => s.streamer_id === streamer.streamer_id);
+          if (!existingStreamer) {
+            failed++;
+            continue;
+          }
+
+          const { error } = await supabase.functions.invoke('api', {
+            body: {
+              resource: 'streamers',
+              action: 'update',
+              id: existingStreamer.id,
+              data: {
+                name: streamer.name
+              }
+            },
+            headers: { 'x-session-token': sessionToken }
+          });
+
+          if (error) {
+            failed++;
+          } else {
+            success++;
+          }
         }
       } catch (error) {
-        console.error('Error adding streamer in batch:', error);
+        console.error('Error processing streamer in batch:', error);
         failed++;
       }
     }
 
+    const created = streamers.filter(s => s.action === 'create').length;
+    const updated = streamers.filter(s => s.action === 'update').length;
+    
     if (success > 0) {
-      toast.success(`${success} streamer${success !== 1 ? 's' : ''} cadastrado${success !== 1 ? 's' : ''} com sucesso!`);
+      if (created > 0 && updated > 0) {
+        toast.success(`${success} operação(ões) realizada(s): novos e atualizações!`);
+      } else if (created > 0) {
+        toast.success(`${success} streamer${success !== 1 ? 's' : ''} cadastrado${success !== 1 ? 's' : ''} com sucesso!`);
+      } else {
+        toast.success(`${success} nome${success !== 1 ? 's' : ''} atualizado${success !== 1 ? 's' : ''} com sucesso!`);
+      }
       await fetchStreamers();
     }
 
     if (failed > 0) {
-      toast.error(`${failed} falha${failed !== 1 ? 's' : ''} no cadastro`);
+      toast.error(`${failed} falha${failed !== 1 ? 's' : ''} no processamento`);
     }
 
     return { success, failed };
