@@ -253,7 +253,7 @@ ou separado por TAB/espaço`;
 
               <TabsContent value="register" className="mt-4">
                 <p className="text-sm text-muted-foreground mb-4">
-                  Cadastre novos streamers com <strong>Nome</strong> e <strong>ID</strong>. IDs já existentes serão ignorados.
+                  Cadastre streamers com <strong>Nome</strong> e <strong>ID</strong>. Se o ID já existir, o nome será atualizado automaticamente. IDs idênticos com mesmo nome serão ignorados.
                 </p>
               </TabsContent>
 
