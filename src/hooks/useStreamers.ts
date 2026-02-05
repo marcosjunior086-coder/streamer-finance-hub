@@ -200,7 +200,7 @@ export function useStreamers() {
           }
         } else if (streamer.action === 'update') {
           // Find the existing streamer to update their name
-          const existingStreamer = allStreamers.find(s => s.streamer_id === streamer.streamer_id);
+          const existingStreamer = streamers.find(s => s.streamer_id === streamer.streamer_id);
           if (!existingStreamer) {
             failed++;
             continue;
