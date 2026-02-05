@@ -59,11 +59,12 @@ export function BatchImportDialog({
     return parseBatchInput(rawInput, existingStreamers);
   }, [rawInput, existingStreamers, mode]);
 
-  // Parse for update mode - apply consolidation if duplicate mode
+  // Parse for update mode - allow duplicates when in duplicate mode
   const parsedUpdateRaw = useMemo(() => {
     if (mode !== 'update' || !rawInput.trim()) return [];
-    return parseGiftUpdateInput(rawInput, existingStreamers);
-  }, [rawInput, existingStreamers, mode]);
+    // Pass allowDuplicates=true when in duplicate mode so all entries are valid for consolidation
+    return parseGiftUpdateInput(rawInput, existingStreamers, updateImportType === 'duplicate');
+  }, [rawInput, existingStreamers, mode, updateImportType]);
 
   const parsedUpdate = useMemo(() => {
     if (updateImportType === 'duplicate') {

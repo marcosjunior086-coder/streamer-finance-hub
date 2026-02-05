@@ -197,7 +197,8 @@ function parseRegistrationLine(line: string): { name: string; streamer_id: strin
 // ===== Update Mode Parsing (ID + Gifts + Minutes) =====
 export function parseGiftUpdateInput(
   input: string, 
-  existingStreamers: { name: string; streamer_id: string }[]
+  existingStreamers: { name: string; streamer_id: string }[],
+  allowDuplicates: boolean = false
 ): ParsedGiftUpdate[] {
   const lines = input.split('\n').filter(line => line.trim());
   const results: ParsedGiftUpdate[] = [];
@@ -233,7 +234,8 @@ export function parseGiftUpdateInput(
           isValid: false,
           error: `ID "${parsed.streamer_id}" não encontrado - ignorado`
         });
-      } else if (processedIds.has(parsed.streamer_id)) {
+      } else if (!allowDuplicates && processedIds.has(parsed.streamer_id)) {
+        // Only mark as duplicate error if allowDuplicates is false
         results.push({
           ...parsed,
           streamerName,
