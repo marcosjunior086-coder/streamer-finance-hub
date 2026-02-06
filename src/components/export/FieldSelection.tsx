@@ -16,6 +16,7 @@ const fields: { key: keyof ExportOptions; label: string }[] = [
   { key: 'includeAgencyUsd', label: 'Agência $' },
   { key: 'includeHostCrystals', label: 'Cristais' },
   { key: 'includeLuckGifts', label: 'Sorte' },
+  { key: 'includeMinutes', label: 'Minutos' },
   { key: 'includeHours', label: 'Horas' },
   { key: 'includeDays', label: 'Dias' },
 ];
