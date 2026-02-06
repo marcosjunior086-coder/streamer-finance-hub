@@ -68,6 +68,7 @@ export interface ExportOptions {
   includeHostCrystals: boolean;
   includeHostUsd: boolean;
   includeAgencyUsd: boolean;
+  includeMinutes: boolean;
   includeHours: boolean;
   includeDays: boolean;
 }

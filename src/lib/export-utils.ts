@@ -30,6 +30,7 @@ const exportFields: ExportField[] = [
   { key: 'includeHostCrystals', label: 'Cristais', getValue: (s) => formatNumber(s.host_crystals) },
   { key: 'includeHostUsd', label: 'Host $', getValue: (s) => formatCurrency(calculateHostUsd(s.host_crystals)) },
   { key: 'includeAgencyUsd', label: 'Agência $', getValue: (s) => formatCurrency(calculateAgencyUsd(s.host_crystals)) },
+  { key: 'includeMinutes', label: 'Minutos', getValue: (s) => formatNumber(s.minutes) },
   { key: 'includeHours', label: 'Horas', getValue: (s) => formatMinutesToHours(s.minutes) },
   { key: 'includeDays', label: 'Dias', getValue: (s) => String(s.effective_days) },
 ];

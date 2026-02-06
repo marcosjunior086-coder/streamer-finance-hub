@@ -35,6 +35,7 @@ const defaultExportOptions: ExportOptions = {
   includeHostCrystals: true,
   includeHostUsd: true,
   includeAgencyUsd: true,
+  includeMinutes: true,
   includeHours: true,
   includeDays: true
 };
