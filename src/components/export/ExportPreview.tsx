@@ -9,9 +9,10 @@ interface ExportPreviewProps {
   options: ExportOptions;
   format: ExportFormat;
   maxItems?: number;
+  fieldOrder?: (keyof ExportOptions)[];
 }
 
-export function ExportPreview({ streamers, options, format, maxItems = 5 }: ExportPreviewProps) {
+export function ExportPreview({ streamers, options, format, maxItems = 5, fieldOrder }: ExportPreviewProps) {
   const displayStreamers = streamers.slice(0, maxItems);
   const hasMore = streamers.length > maxItems;
 
@@ -24,7 +25,7 @@ export function ExportPreview({ streamers, options, format, maxItems = 5 }: Expo
   }
 
   if (format === 'text') {
-    const textContent = formatTextBlock(displayStreamers, options);
+    const textContent = formatTextBlock(displayStreamers, options, fieldOrder);
     return (
       <ScrollArea className="h-64">
         <div className="p-4 rounded-lg bg-muted/30 font-mono text-sm whitespace-pre-wrap">
@@ -40,7 +41,7 @@ export function ExportPreview({ streamers, options, format, maxItems = 5 }: Expo
   }
 
   if (format === 'report') {
-    const { headers, rows } = formatSpreadsheetPreview(displayStreamers, options);
+    const { headers, rows } = formatSpreadsheetPreview(displayStreamers, options, fieldOrder);
     return (
       <ScrollArea className="h-64">
         <div className="rounded-lg border bg-white text-black p-4">
@@ -107,7 +108,7 @@ export function ExportPreview({ streamers, options, format, maxItems = 5 }: Expo
   }
 
   // Spreadsheet format
-  const { headers, rows } = formatSpreadsheetPreview(displayStreamers, options);
+  const { headers, rows } = formatSpreadsheetPreview(displayStreamers, options, fieldOrder);
 
   return (
     <ScrollArea className="h-64">

@@ -8,12 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useStreamers } from '@/hooks/useStreamers';
 import { useSnapshots } from '@/hooks/useSnapshots';
-import { ExportOptions, Streamer } from '@/types/streamer';
-import { Copy, FileText, Check, Table2, FileType, FileBarChart } from 'lucide-react';
+import { ExportOptions, Streamer, SortDirection, calculateHostUsd, calculateAgencyUsd } from '@/types/streamer';
+import { Copy, FileText, Check, Table2, FileType, FileBarChart, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { ExportPreview } from '@/components/export/ExportPreview';
 import { DownloadDropdown } from '@/components/export/DownloadDropdown';
 import { FieldSelection } from '@/components/export/FieldSelection';
+import { SortControls, ExportSortField } from '@/components/export/SortControls';
 import {
   ExportFormat,
   DownloadFormat,
@@ -40,34 +41,90 @@ const defaultExportOptions: ExportOptions = {
   includeDays: true
 };
 
+const defaultFieldOrder: (keyof ExportOptions)[] = [
+  'includeRanking',
+  'includeName',
+  'includeId',
+  'includeLuckGifts',
+  'includeExclusiveGifts',
+  'includeHostCrystals',
+  'includeHostUsd',
+  'includeAgencyUsd',
+  'includeMinutes',
+  'includeHours',
+  'includeDays',
+];
+
 export default function Export() {
   const { allStreamers, isLoading: streamersLoading } = useStreamers();
   const { snapshots, isLoading: snapshotsLoading } = useSnapshots();
   
   const [exportOptions, setExportOptions] = useState<ExportOptions>(defaultExportOptions);
+  const [fieldOrder, setFieldOrder] = useState<(keyof ExportOptions)[]>(defaultFieldOrder);
   const [exportSource, setExportSource] = useState<'current' | 'snapshot'>('current');
   const [selectedSnapshot, setSelectedSnapshot] = useState<string>('');
   const [selectedStreamer, setSelectedStreamer] = useState<string>('all');
   const [exportFormat, setExportFormat] = useState<ExportFormat>('text');
   const [pdfOrientation, setPdfOrientation] = useState<PdfOrientation>('landscape');
+  const [sortField, setSortField] = useState<ExportSortField>('none');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [copied, setCopied] = useState(false);
 
   const toggleOption = (key: keyof ExportOptions) => {
     setExportOptions(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const sortStreamers = (data: Streamer[]): Streamer[] => {
+    if (sortField === 'none') return data;
+    
+    return [...data].sort((a, b) => {
+      let aVal: number | string;
+      let bVal: number | string;
+      
+      switch (sortField) {
+        case 'name':
+          aVal = a.name;
+          bVal = b.name;
+          break;
+        case 'host_usd':
+          aVal = calculateHostUsd(a.host_crystals);
+          bVal = calculateHostUsd(b.host_crystals);
+          break;
+        case 'agency_usd':
+          aVal = calculateAgencyUsd(a.host_crystals);
+          bVal = calculateAgencyUsd(b.host_crystals);
+          break;
+        default:
+          aVal = a[sortField] || 0;
+          bVal = b[sortField] || 0;
+      }
+      
+      let comparison: number;
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        comparison = aVal.localeCompare(bVal);
+      } else {
+        comparison = (aVal as number) - (bVal as number);
+      }
+      
+      return sortDirection === 'desc' ? -comparison : comparison;
+    });
+  };
+
   const getDataToExport = (): Streamer[] | null => {
+    let data: Streamer[] | null = null;
+
     if (exportSource === 'current') {
       if (selectedStreamer === 'all') {
-        return allStreamers;
+        data = allStreamers;
+      } else {
+        const streamer = allStreamers.find(s => s.id === selectedStreamer);
+        data = streamer ? [streamer] : null;
       }
-      const streamer = allStreamers.find(s => s.id === selectedStreamer);
-      return streamer ? [streamer] : null;
     } else {
       const snapshot = snapshots.find(s => s.id === selectedSnapshot);
       if (!snapshot) return null;
       
-      return snapshot.data.map(s => ({
+      data = snapshot.data.map(s => ({
         id: s.streamer_id,
         streamer_id: s.streamer_id,
         name: s.name,
@@ -80,6 +137,12 @@ export default function Export() {
         updated_at: ''
       }));
     }
+
+    if (data) {
+      data = sortStreamers(data);
+    }
+
+    return data;
   };
 
   const handleCopy = async () => {
@@ -89,7 +152,7 @@ export default function Export() {
       return;
     }
 
-    const text = formatTextBlock(data, exportOptions);
+    const text = formatTextBlock(data, exportOptions, fieldOrder);
     
     try {
       await navigator.clipboard.writeText(text);
@@ -121,19 +184,19 @@ export default function Export() {
     try {
       switch (format) {
         case 'txt':
-          downloadTxt(formatTextBlock(data, exportOptions), filename);
+          downloadTxt(formatTextBlock(data, exportOptions, fieldOrder), filename);
           break;
         case 'pdf':
-          downloadPdf(formatTextBlock(data, exportOptions), filename);
+          downloadPdf(formatTextBlock(data, exportOptions, fieldOrder), filename);
           break;
         case 'xlsx':
-          downloadXlsx(data, exportOptions, filename);
+          downloadXlsx(data, exportOptions, filename, fieldOrder);
           break;
         case 'csv':
-          downloadCsv(data, exportOptions, filename);
+          downloadCsv(data, exportOptions, filename, fieldOrder);
           break;
         case 'pdf-report':
-          await downloadPdfReport(data, exportOptions, filename, getPeriodLabel(), pdfOrientation);
+          await downloadPdfReport(data, exportOptions, filename, getPeriodLabel(), pdfOrientation, fieldOrder);
           break;
       }
       toast.success(`Arquivo ${format === 'pdf-report' ? 'PDF Relatório' : format.toUpperCase()} baixado com sucesso!`);
@@ -226,86 +289,114 @@ export default function Export() {
             </CardContent>
           </Card>
 
-          {/* Field Selection */}
+          {/* Field Selection & Column Order */}
           <Card className="glass">
             <CardHeader>
-              <CardTitle>Campos para Exportar</CardTitle>
+              <CardTitle>Campos e Ordem das Colunas</CardTitle>
               <CardDescription>
-                Selecione os campos que deseja incluir
+                Selecione e reorganize os campos para exportação. Ranking permanece fixo na primeira posição.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <FieldSelection options={exportOptions} onToggle={toggleOption} />
+              <FieldSelection 
+                options={exportOptions} 
+                onToggle={toggleOption}
+                fieldOrder={fieldOrder}
+                onReorder={setFieldOrder}
+              />
             </CardContent>
           </Card>
         </div>
 
-        {/* Format Selection */}
-        <Card className="glass">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileType className="h-5 w-5 text-primary" />
-              Formato de Visualização
-            </CardTitle>
-            <CardDescription>
-              Escolha como visualizar a prévia dos dados
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <RadioGroup
-              value={exportFormat}
-              onValueChange={(v) => setExportFormat(v as ExportFormat)}
-              className="flex flex-wrap gap-6"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="text" id="format-text" />
-                <Label htmlFor="format-text" className="flex items-center gap-2 cursor-pointer">
-                  <FileText className="h-4 w-4" />
-                  Texto (WhatsApp, Docs)
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="spreadsheet" id="format-spreadsheet" />
-                <Label htmlFor="format-spreadsheet" className="flex items-center gap-2 cursor-pointer">
-                  <Table2 className="h-4 w-4" />
-                  Planilha (Excel, CSV)
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="report" id="format-report" />
-                <Label htmlFor="format-report" className="flex items-center gap-2 cursor-pointer">
-                  <FileBarChart className="h-4 w-4" />
-                  Relatório PDF
-                </Label>
-              </div>
-            </RadioGroup>
+        {/* Sort & Format Selection */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Sort Controls */}
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ArrowUpDown className="h-5 w-5 text-primary" />
+                Classificação
+              </CardTitle>
+              <CardDescription>
+                Ordene os dados antes de exportar
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SortControls
+                sortField={sortField}
+                sortDirection={sortDirection}
+                onSortFieldChange={setSortField}
+                onSortDirectionChange={setSortDirection}
+              />
+            </CardContent>
+          </Card>
 
-            {/* PDF Orientation Option - only show when report format is selected */}
-            {exportFormat === 'report' && (
-              <div className="pt-4 border-t">
-                <Label className="text-sm font-medium mb-3 block">Orientação do PDF</Label>
-                <RadioGroup
-                  value={pdfOrientation}
-                  onValueChange={(v) => setPdfOrientation(v as PdfOrientation)}
-                  className="flex gap-6"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="landscape" id="orientation-landscape" />
-                    <Label htmlFor="orientation-landscape" className="cursor-pointer">
-                      Paisagem
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="portrait" id="orientation-portrait" />
-                    <Label htmlFor="orientation-portrait" className="cursor-pointer">
-                      Retrato
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          {/* Format Selection */}
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileType className="h-5 w-5 text-primary" />
+                Formato de Visualização
+              </CardTitle>
+              <CardDescription>
+                Escolha como visualizar a prévia dos dados
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <RadioGroup
+                value={exportFormat}
+                onValueChange={(v) => setExportFormat(v as ExportFormat)}
+                className="flex flex-wrap gap-6"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="text" id="format-text" />
+                  <Label htmlFor="format-text" className="flex items-center gap-2 cursor-pointer">
+                    <FileText className="h-4 w-4" />
+                    Texto
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="spreadsheet" id="format-spreadsheet" />
+                  <Label htmlFor="format-spreadsheet" className="flex items-center gap-2 cursor-pointer">
+                    <Table2 className="h-4 w-4" />
+                    Planilha
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="report" id="format-report" />
+                  <Label htmlFor="format-report" className="flex items-center gap-2 cursor-pointer">
+                    <FileBarChart className="h-4 w-4" />
+                    Relatório PDF
+                  </Label>
+                </div>
+              </RadioGroup>
+
+              {exportFormat === 'report' && (
+                <div className="pt-4 border-t">
+                  <Label className="text-sm font-medium mb-3 block">Orientação do PDF</Label>
+                  <RadioGroup
+                    value={pdfOrientation}
+                    onValueChange={(v) => setPdfOrientation(v as PdfOrientation)}
+                    className="flex gap-6"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="landscape" id="orientation-landscape" />
+                      <Label htmlFor="orientation-landscape" className="cursor-pointer">
+                        Paisagem
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="portrait" id="orientation-portrait" />
+                      <Label htmlFor="orientation-portrait" className="cursor-pointer">
+                        Retrato
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Preview & Actions */}
         <Card className="glass">
@@ -320,6 +411,7 @@ export default function Export() {
               streamers={dataToExport || []}
               options={exportOptions}
               format={exportFormat}
+              fieldOrder={fieldOrder}
             />
 
             <div className="flex gap-4">
