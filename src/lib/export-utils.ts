@@ -35,12 +35,18 @@ const exportFields: ExportField[] = [
   { key: 'includeDays', label: 'Dias', getValue: (s) => String(s.effective_days) },
 ];
 
-export function getActiveFields(options: ExportOptions): ExportField[] {
+export function getActiveFields(options: ExportOptions, fieldOrder?: (keyof ExportOptions)[]): ExportField[] {
+  if (fieldOrder) {
+    return fieldOrder
+      .filter(key => options[key])
+      .map(key => exportFields.find(f => f.key === key)!)
+      .filter(Boolean);
+  }
   return exportFields.filter(field => options[field.key]);
 }
 
-export function formatTextBlock(streamers: Streamer[], options: ExportOptions): string {
-  const activeFields = getActiveFields(options);
+export function formatTextBlock(streamers: Streamer[], options: ExportOptions, fieldOrder?: (keyof ExportOptions)[]): string {
+  const activeFields = getActiveFields(options, fieldOrder);
   const lines: string[] = [];
 
   streamers.forEach((streamer, index) => {
@@ -58,8 +64,8 @@ export function formatTextBlock(streamers: Streamer[], options: ExportOptions): 
   return lines.join('\n');
 }
 
-export function formatSpreadsheetPreview(streamers: Streamer[], options: ExportOptions): { headers: string[], rows: string[][] } {
-  const activeFields = getActiveFields(options);
+export function formatSpreadsheetPreview(streamers: Streamer[], options: ExportOptions, fieldOrder?: (keyof ExportOptions)[]): { headers: string[], rows: string[][] } {
+  const activeFields = getActiveFields(options, fieldOrder);
   const headers = activeFields.map(f => f.label);
   const rows = streamers.map((streamer, index) => 
     activeFields.map(field => field.getValue(streamer, index))
@@ -128,8 +134,8 @@ export function downloadPdf(content: string, filename: string): void {
   doc.save(`${filename}.pdf`);
 }
 
-export function downloadXlsx(streamers: Streamer[], options: ExportOptions, filename: string): void {
-  const { headers, rows } = formatSpreadsheetPreview(streamers, options);
+export function downloadXlsx(streamers: Streamer[], options: ExportOptions, filename: string, fieldOrder?: (keyof ExportOptions)[]): void {
+  const { headers, rows } = formatSpreadsheetPreview(streamers, options, fieldOrder);
   const data = [headers, ...rows];
   
   const ws = XLSX.utils.aoa_to_sheet(data);
@@ -149,8 +155,8 @@ export function downloadXlsx(streamers: Streamer[], options: ExportOptions, file
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
-export function downloadCsv(streamers: Streamer[], options: ExportOptions, filename: string): void {
-  const { headers, rows } = formatSpreadsheetPreview(streamers, options);
+export function downloadCsv(streamers: Streamer[], options: ExportOptions, filename: string, fieldOrder?: (keyof ExportOptions)[]): void {
+  const { headers, rows } = formatSpreadsheetPreview(streamers, options, fieldOrder);
   const data = [headers, ...rows];
   
   const ws = XLSX.utils.aoa_to_sheet(data);
@@ -174,9 +180,10 @@ export async function downloadPdfReport(
   options: ExportOptions, 
   filename: string,
   periodLabel?: string,
-  orientation: PdfOrientation = 'landscape'
+  orientation: PdfOrientation = 'landscape',
+  fieldOrder?: (keyof ExportOptions)[]
 ): Promise<void> {
-  const { headers, rows } = formatSpreadsheetPreview(streamers, options);
+  const { headers, rows } = formatSpreadsheetPreview(streamers, options, fieldOrder);
   
   const doc = new jsPDF({
     orientation: orientation,
@@ -198,23 +205,20 @@ export async function downloadPdfReport(
     doc.addImage(logoImg, 'PNG', logoX, currentY, logoWidth, logoHeight);
     currentY += logoHeight + 8;
   } catch (error) {
-    // If logo fails to load, just continue without it
     console.warn('Could not load logo:', error);
   }
 
-  // Title (use safe ASCII for PDF fonts)
+  // Title
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text('Relatorio de Streamers', pageWidth / 2, currentY, { align: 'center' });
+  doc.text('Relatório de Streamers', pageWidth / 2, currentY, { align: 'center' });
   currentY += 8;
 
   // Period label if provided
   if (periodLabel) {
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    // Sanitize period label for PDF compatibility
-    const sanitizedPeriodLabel = sanitizeTextForPdfLight(periodLabel);
-    doc.text(`Periodo: ${sanitizedPeriodLabel}`, pageWidth / 2, currentY, { align: 'center' });
+    doc.text(`Período: ${periodLabel}`, pageWidth / 2, currentY, { align: 'center' });
     currentY += 6;
   }
 
@@ -228,9 +232,7 @@ export async function downloadPdfReport(
     hour: '2-digit',
     minute: '2-digit'
   });
-  // Sanitize date (remove accents from month names)
-  const sanitizedDate = sanitizeTextForPdfLight(generatedAt);
-  doc.text(`Gerado em: ${sanitizedDate}`, pageWidth / 2, currentY, { align: 'center' });
+  doc.text(`Gerado em: ${generatedAt}`, pageWidth / 2, currentY, { align: 'center' });
   doc.setTextColor(0);
   currentY += 10;
 
@@ -246,14 +248,10 @@ export async function downloadPdfReport(
     }
   });
 
-  // Sanitize text for PDF - preserve as much as possible, only remove unsupported chars
-  const sanitizedHeaders = headers.map(h => sanitizeTextForPdfLight(h));
-  const sanitizedRows = rows.map(row => row.map(cell => sanitizeTextForPdfLight(cell)));
-
-  // Generate table
+  // Generate table - text passed through without sanitization for maximum fidelity
   autoTable(doc, {
-    head: [sanitizedHeaders],
-    body: sanitizedRows,
+    head: [headers],
+    body: rows,
     startY: currentY,
     margin: { left: margin, right: margin },
     styles: {
@@ -264,7 +262,7 @@ export async function downloadPdfReport(
       font: 'helvetica',
     },
     headStyles: {
-      fillColor: [255, 47, 146], // Primary pink color
+      fillColor: [255, 47, 146],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       halign: 'center',
@@ -274,13 +272,12 @@ export async function downloadPdfReport(
       fillColor: [248, 248, 248],
     },
     didDrawPage: (data) => {
-      // Footer with page numbers
       const pageNumber = doc.getCurrentPageInfo().pageNumber;
       const totalPages = doc.getNumberOfPages();
       doc.setFontSize(8);
       doc.setTextColor(128);
       doc.text(
-        `Pagina ${pageNumber} de ${totalPages}`,
+        `Página ${pageNumber} de ${totalPages}`,
         pageWidth / 2,
         pageHeight - 10,
         { align: 'center' }
@@ -294,60 +291,6 @@ export async function downloadPdfReport(
   });
 
   doc.save(`${filename}.pdf`);
-}
-
-// Light sanitization for PDF - only remove characters that cause rendering issues
-// Preserves accented characters since Helvetica supports Latin-1
-function sanitizeTextForPdfLight(text: string): string {
-  if (!text) return '';
-  
-  // Only remove emoji characters that can't be rendered by standard PDF fonts
-  let sanitized = text
-    // Remove emoji characters
-    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
-    .replace(/[\u{2600}-\u{26FF}]/gu, '')
-    .replace(/[\u{2700}-\u{27BF}]/gu, '')
-    .replace(/[\u{FE00}-\u{FE0F}]/gu, '')
-    .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
-    // Remove zero-width and variation selectors
-    .replace(/[\u{200D}]/gu, '')
-    .replace(/[\u{20E3}]/gu, '')
-    .replace(/[\u{E0020}-\u{E007F}]/gu, '')
-    // Remove other problematic unicode ranges
-    .replace(/[\u{2000}-\u{206F}]/gu, ' ') // General punctuation (replace with space)
-    .replace(/[\u{FFF0}-\u{FFFF}]/gu, ''); // Specials
-  
-  // Clean up multiple spaces and trim
-  sanitized = sanitized.replace(/\s+/g, ' ').trim();
-  
-  return sanitized;
-}
-
-// For basic PDF text export (not tabular) - more aggressive sanitization
-function sanitizeTextForPdf(text: string): string {
-  if (!text) return '';
-  
-  let sanitized = sanitizeTextForPdfLight(text);
-  
-  // For non-table content, also normalize accents for better compatibility
-  const accentMap: { [key: string]: string } = {
-    'á': 'a', 'à': 'a', 'ã': 'a', 'â': 'a', 'ä': 'a',
-    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
-    'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
-    'ó': 'o', 'ò': 'o', 'õ': 'o', 'ô': 'o', 'ö': 'o',
-    'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
-    'ç': 'c', 'ñ': 'n',
-    'Á': 'A', 'À': 'A', 'Ã': 'A', 'Â': 'A', 'Ä': 'A',
-    'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E',
-    'Í': 'I', 'Ì': 'I', 'Î': 'I', 'Ï': 'I',
-    'Ó': 'O', 'Ò': 'O', 'Õ': 'O', 'Ô': 'O', 'Ö': 'O',
-    'Ú': 'U', 'Ù': 'U', 'Û': 'U', 'Ü': 'U',
-    'Ç': 'C', 'Ñ': 'N'
-  };
-  
-  sanitized = sanitized.split('').map(char => accentMap[char] || char).join('');
-  
-  return sanitized;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
